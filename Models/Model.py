@@ -41,10 +41,10 @@ class Model(nn.Module):
             params = self.to_param(params)
         else:
             params = self.params
-            recursive_map(lambda p: p.grad.zero_() if p.grad else None, self.params)
-        y = self(x, params=params, grad=True)
+        recursive_map(lambda p: p.grad.zero_() if p.grad else None, params)
+        y = self.evaluate(x, *params)
         y.backward()
-        g = recursive_map(lambda p: p.grad, self.params)
+        g = recursive_map(lambda p: p.grad, params)
         return g
 
     def fit(self, X, y, itr_max = 1000):
@@ -65,11 +65,11 @@ class Model(nn.Module):
     # Recursively check that the supplied params is the same length as the original params
     def check_param(self, params):
         def recursive_check(self_param, other_param):
-            self_is_list_tuple = islist(self_param)
-            other_is_list_tuple = islist(other_param)
-            if self_is_list_tuple != other_is_list_tuple:
+            self_islist = islist(self_param)
+            other_islist = islist(other_param)
+            if self_islist != other_islist:
                 return False
-            if not self_is_list_tuple and not other_is_list_tuple:
+            if not self_islist and not other_islist:
                 return True
             if len(self_param) != len(other_param):
                 return False
@@ -83,8 +83,8 @@ class Model(nn.Module):
         if params is None:
             params = self.params
         else:
-            params = self.to_param(params)
             assert self.check_param(params)  # If params is supplied, must be equal length to number of params
+            params = self.to_param(params)
         y = self.evaluate(X, *params)
         if noisy:
             noise = torch.normal(torch.full_like(y,noise_mean), torch.full_like(y,noise_std))
