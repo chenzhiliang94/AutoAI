@@ -7,9 +7,11 @@ from Composition.SequentialSystem import SequentialSystem
 from botorch.acquisition import UpperConfidenceBound
 import numpy as np
 
+dtype = torch.float64
+
 def BO_skeleton(system: SequentialSystem):
-    parameter_trials = torch.Tensor([(np.array(system.get_parameters())).flatten()])
-    result = torch.Tensor([-system.compute_system_loss()]).reshape([1,1])
+    parameter_trials = torch.tensor((np.array(system.get_parameters())).flatten(), dtype=dtype).unsqueeze(0)
+    result = torch.tensor([-system.compute_system_loss()], dtype=dtype).reshape([1,1])
 
     for i in range(30):
         gp = SingleTaskGP(parameter_trials, result)
@@ -25,5 +27,5 @@ def BO_skeleton(system: SequentialSystem):
         system_loss = system.compute_system_loss()
         print("candidate generated: ", candidate)
         print("BO system loss: ", system_loss)
-        result = torch.vstack((result, torch.Tensor([-system_loss]).reshape([1, 1])))
+        result = torch.vstack((result, torch.tensor([-system_loss], dtype=dtype).reshape([1, 1])))
     return parameter_trials

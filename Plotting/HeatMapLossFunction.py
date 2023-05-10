@@ -14,9 +14,9 @@ def HeatMapLossFunction(X_local, y_local, X_global, z_global, f, g, plt):
     global_loss = []
     global_pertube_loss = []
     for theta_0, theta_1 in zip(theta_0_range.flatten(), theta_1_range.flatten()):
-        y_pred = g.func_all(X_local, theta_0, theta_1)
-        z_pred = f.generate_pertubed_component(y_pred)
-        z_pred_pertubed = f.generate_pertubed_component(y_pred)
+        y_pred = g(X_local, params=[theta_0, theta_1])
+        z_pred = f(y_pred, noisy = False)
+        z_pred_pertubed = f(y_pred, noisy = True)
         local_loss.append(mean_squared_error(y_pred, y_local))
         global_loss.append(mean_squared_error(z_pred, z_global))
         global_pertube_loss.append(mean_squared_error(z_pred_pertubed, z_global))

@@ -79,10 +79,10 @@ class SequentialSystem():
         output = X
         for component in self.all_components:
             if isinstance(component, Model):
-                output = component.item.predict(output)
+                output = component.item(output)
             else:
                 # output = component.item.func(output) # no pertubation
-                output = component.item.generate_pertubed_component(output)
+                output = component.item(output, noisy = True)
         return output
 
     def compute_system_loss(self):
@@ -93,7 +93,7 @@ class SequentialSystem():
         # list_of_params: list of tuple/list
         for idx in range(0, len(self.all_components)):
             if isinstance(self.all_components[idx], Model):
-                self.all_components[idx].item.set_theta(list_of_params[idx])
+                self.all_components[idx].item.set_params(list_of_params[idx])
 
     def get_parameters(self):
         all_params = []
