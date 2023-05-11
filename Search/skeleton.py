@@ -11,6 +11,7 @@ dtype = torch.float64
 
 def BO_skeleton(system: SequentialSystem):
     parameter_trials = torch.tensor((np.array(system.get_parameters())).flatten(), dtype=dtype).unsqueeze(0)
+
     result = torch.tensor([-system.compute_system_loss()], dtype=dtype).reshape([1,1])
 
     for i in range(30):
@@ -25,7 +26,10 @@ def BO_skeleton(system: SequentialSystem):
         parameter_trials = (torch.vstack((parameter_trials, candidate)))
         system.assign_parameters(candidate)
         system_loss = system.compute_system_loss()
+        local_loss = system.compute_local_loss() # this should be one loss per component (find a way to index it)
         print("candidate generated: ", candidate)
         print("BO system loss: ", system_loss)
+        print("local loss: ", local_loss)
+
         result = torch.vstack((result, torch.tensor([-system_loss], dtype=dtype).reshape([1, 1])))
     return parameter_trials

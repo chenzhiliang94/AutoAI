@@ -19,6 +19,7 @@ class SequentialSystem():
 
     def addModel(self, model, X_local, y_local):
         # adds a model and local dataset
+        model.attach_local_data(X_local, y_local)
         self.all_components.append(Model(model, X_local, y_local))
 
     def addComponent(self, component):
@@ -88,6 +89,13 @@ class SequentialSystem():
     def compute_system_loss(self):
         z_pred = self.predict(self.global_X.reshape(len(self.global_X), 1))
         return mean_squared_error(z_pred, self.global_y)
+
+    def compute_local_loss(self):
+        local_loss = [] # need to find a way to assign unique id to each component instead of a list
+        for idx in range(0, len(self.all_components)):
+            if isinstance(self.all_components[idx], Model):
+                local_loss.append(self.all_components[idx].item.get_local_loss())
+        return local_loss
 
     def assign_parameters(self, list_of_params):
         # list_of_params: list of tuple/list

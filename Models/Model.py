@@ -10,12 +10,25 @@ def recursive_map(fn, iterable):
 
 class Model(nn.Module):
     params = None
+    X = None
+    y = None
     def __init__(self, lr=0.01, tol = 1e-05, dtype=torch.float64):
         super().__init__()
         self.lr = lr
         self.tol = tol
         self.dtype = dtype
         self.noisy_operation = (lambda y, n : y + n)
+
+    def attach_local_data(self, X, y):
+        self.X = X
+        self.y = y
+
+    def get_local_loss(self):
+        assert self.X != None and self.y != None, "no local data is found. Cannot get local loss!"
+        output = self(self.X, grad=True)
+        mse = nn.MSELoss()
+        loss = mse(output, self.y)
+        return loss
 
     def to_param(self, params):
         return recursive_map(lambda p: nn.Parameter(p if torch.is_tensor(p) else torch.tensor(p, dtype=self.dtype)), params)
