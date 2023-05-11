@@ -92,7 +92,7 @@ class Model(nn.Module):
             return True
         return recursive_check(self.params, params)
 
-    def forward(self, X, params = None, grad = False, noisy=False, noise_mean = 0, noise_std = 0.05, noisy_operation = None):
+    def forward(self, X, params = None, grad = False, noisy=False, noise_mean = 0.3, noise_std = 0.05, noisy_operation = None):
         if params is None:
             params = self.params
         else:

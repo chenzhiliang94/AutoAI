@@ -98,10 +98,14 @@ class SequentialSystem():
         return local_loss
 
     def assign_parameters(self, list_of_params):
-        # list_of_params: list of tuple/list
+        list_of_params = list_of_params.flatten()
+        # list_of_params: just a list
+        param_idx = 0
         for idx in range(0, len(self.all_components)):
             if isinstance(self.all_components[idx], Model):
-                self.all_components[idx].item.set_params(list_of_params[idx])
+                num_param_to_assign = len(self.all_components[idx].item.get_params())
+                self.all_components[idx].item.set_params(list_of_params[param_idx:param_idx+num_param_to_assign])
+                param_idx += num_param_to_assign
 
     def get_parameters(self):
         all_params = []
