@@ -82,11 +82,12 @@ class SequentialSystem():
             if isinstance(component, Model):
                 output = component.item(output)
             else:
-                # output = component.item.func(output) # no pertubation
+                # assume perturbation in black box component during forward pass
                 output = component.item(output, noisy = True)
         return output
 
     def compute_system_loss(self):
+        # when computing system loss, the forward pass is noisy
         z_pred = self.predict(self.global_X.reshape(len(self.global_X), 1))
         return mean_squared_error(z_pred, self.global_y)
 

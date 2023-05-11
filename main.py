@@ -15,10 +15,12 @@ from Search.skeleton import BO_skeleton
 f = DifferentiablePolynomial() # black box function (comes second)
 f.noisy_operation = lambda y, n:(1+n)*y # set multiplicative noise
 g_A = ExponentialModel() # white box function (comes first)
+g_A.noisy_operation = lambda y, n:y+n # set addition noise
 g_B = sincosModel() # white box function (comes last)
+g_B.noisy_operation = lambda y, n:y+n # set addition noise
 
-ground_truth_theta_0_A = 1
-ground_truth_theta_1_A = 1
+ground_truth_theta_0_A = 1.6
+ground_truth_theta_1_A = 1.2
 
 ground_truth_theta_0_B = 0.9
 ground_truth_theta_1_B = 1.4
@@ -26,39 +28,43 @@ ground_truth_theta_1_B = 1.4
 # generate local dataset over g (first component A)
 X_local = torch.tensor(np.random.uniform(1, 3, size=100))
 X_global = X_local
-y_local = g_A(X_local, params=[ground_truth_theta_0_A, ground_truth_theta_1_A], noisy = True) # labeling effort of local
+y_local = g_A(X_local, params=[ground_truth_theta_0_A, ground_truth_theta_1_A], noisy = True, noise_mean = 0.0) # labeling effort of local
 # pass into black box component
-X_b = f(y_local, noisy = False) # ground truth
-X_b_pertubed = f(y_local, noisy = True)
+X_b = f(y_local, noisy = False) # ground truth, no noise in black box component
 # generate local dataset over g2 (second component B)
-system_output_no_perturbation = g_B(X_b, params=[ground_truth_theta_0_B, ground_truth_theta_1_B], noisy = True) # labeling effor
-system_output_perturbation = g_B(X_b_pertubed, params=[ground_truth_theta_0_B, ground_truth_theta_1_B], noisy = True) # labeling effor
+system_output_no_perturbation = g_B(X_b, params=[ground_truth_theta_0_B, ground_truth_theta_1_B], noisy = True, noise_mean = 0.0) # labeling effort
 
 # generate end to end dataset (use same X)
 X_global = X_local
 z_global = system_output_no_perturbation
-z_global_pertubed = system_output_perturbation
+
+# local gradient descent
+all_theta_via_local = g_A.fit(X_local,y_local)
+all_theta_via_local = g_B.fit(X_b,system_output_no_perturbation)
 
 
-#plt, fig, ax = HeatMapLossFunction(X_local, y_local, X_global, z_global_pertubed, f, g, plt)
-
-# train function g on x,y ("local") using local gradient descent
-#all_theta_via_local = g_A.fit(X_local,y_local)
-#y_pred = g_A(X_global.reshape(len(X_global),1))
-
-# train composite function f.g on x,z ("global") using BO
+# create the system
 s = SequentialSystem()
 
 s.addModel(g_A, X_local, y_local)
 s.addComponent(f)
 s.addModel(g_B, X_b, system_output_no_perturbation)
-s.addGlobalData(X_global, z_global_pertubed)
+s.addGlobalData(X_global, z_global)
 
-all_theta_via_global, loss, param = BO_skeleton(s, objective="all")
+# show parameters and local losses (components already have converged params from gradient descent)
+print(s.get_parameters())
+print(s.compute_local_loss())
+print(s.compute_system_loss())
+
+# BO - parameters are resetted
+all_theta_via_global, loss, param = BO_skeleton(s, objective="all", model="multi_task_gp_bonilla", printout=True)
 print("local, system loss (best)")
 print(loss)
 print("param")
 print(param)
+
+#plt, fig, ax = HeatMapLossFunction(X_local, y_local, X_global, z_global_pertubed, f, g, plt)
+
 #all_theta_via_global = s.fit_global_differentiable() # this performs end to end gradient descent
 #
 # all_theta_via_local = np.array(all_theta_via_local)
