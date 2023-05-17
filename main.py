@@ -5,8 +5,8 @@ import torch
 
 from Components.ConditionalNormalDistribution import ConditionalNormalDistribution
 from Components.DifferentiablePolynomial import DifferentiablePolynomial
-from Models.ModelExponential import ExponentialModel
-from Models.ModelSinCos import sincosModel
+from Models.ModelExponential import ModelExponential
+from Models.ModelSinCos import ModelSinCos
 from Plotting.HeatMapLossFunction import *
 from Composition.SequentialSystem import SequentialSystem
 from Search.skeleton import BO_skeleton
@@ -14,9 +14,9 @@ from Search.skeleton import BO_skeleton
 # f = ConditionalNormalDistribution()
 f = DifferentiablePolynomial() # black box function (comes second)
 f.noisy_operation = lambda y, n:(1+n)*y # set multiplicative noise
-g_A = ExponentialModel() # white box function (comes first)
+g_A = ModelExponential() # white box function (comes first)
 g_A.noisy_operation = lambda y, n:y+n # set addition noise
-g_B = sincosModel() # white box function (comes last)
+g_B = ModelSinCos() # white box function (comes last)
 g_B.noisy_operation = lambda y, n:y+n # set addition noise
 
 ground_truth_theta_0_A = 1.6
