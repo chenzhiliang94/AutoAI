@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch
 
-from Components.ConditionalNormalDistribution import conditional1DNormal
+from Components.ConditionalNormalDistribution import ConditionalNormalDistribution
 from Components.DifferentiablePolynomial import DifferentiablePolynomial
 from Models.ModelExponential import ExponentialModel
 from Models.ModelSinCos import sincosModel
@@ -11,7 +11,7 @@ from Plotting.HeatMapLossFunction import *
 from Composition.SequentialSystem import SequentialSystem
 from Search.skeleton import BO_skeleton
 
-# f = conditional1DNormal()
+# f = ConditionalNormalDistribution()
 f = DifferentiablePolynomial() # black box function (comes second)
 f.noisy_operation = lambda y, n:(1+n)*y # set multiplicative noise
 g_A = ExponentialModel() # white box function (comes first)
