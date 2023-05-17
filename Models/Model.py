@@ -9,11 +9,12 @@ def recursive_map(fn, iterable):
     return list(map(lambda i: recursive_map(fn, i) if islist(i) else fn(i), iterable))
 
 class Model(nn.Module):
-    params = None
+    params = []
     X = None
     y = None
-    def __init__(self, lr=0.01, tol = 1e-05, dtype=torch.float64):
+    def __init__(self, inputs=1, lr=0.01, tol = 1e-05, dtype=torch.float64):
         super().__init__()
+        self.inputs = inputs
         self.lr = lr
         self.tol = tol
         self.dtype = dtype
@@ -91,9 +92,14 @@ class Model(nn.Module):
                     return False
             return True
         return recursive_check(self.params, params)
+    
+    def evaluate(self, X, *params):
+        return X
 
-    def forward(self, X, params = None, grad = False, noisy=False, noise_mean = 0.1, noise_std = 0.05, noisy_operation = None):
-        if params is None:
+    def forward(self, X, params = [], grad = False, noisy=False, noise_mean = 0.1, noise_std = 0.05, noisy_operation = None):
+        if self.inputs > 1:
+            assert X.shape[0] == self.inputs
+        if len(params) == 0:
             params = self.params
         else:
             assert self.check_param(params)  # If params is supplied, must be equal length to number of params
