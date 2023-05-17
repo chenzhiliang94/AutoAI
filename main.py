@@ -57,7 +57,7 @@ print(s.compute_local_loss())
 print(s.compute_system_loss())
 
 # BO - parameters are resetted
-all_theta_via_global, loss, param = BO_skeleton(s, objective="all", model="multi_task_gp_bonilla", printout=True)
+all_theta_via_global, loss, param = BO_skeleton(s, objective="all", model="single_task_gp", printout=True)
 print("local, system loss (best)")
 print(loss)
 print("param")
