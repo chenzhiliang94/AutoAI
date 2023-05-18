@@ -12,13 +12,15 @@ class Model(nn.Module):
     params = []
     X = None
     y = None
-    def __init__(self, inputs=1, lr=0.01, tol = 1e-05, dtype=torch.float64):
+    lipschitz = 1
+    def __init__(self, inputs=1, lr=0.01, tol = 1e-05, lipschitz=1, dtype=torch.float64):
         super().__init__()
         self.inputs = inputs
         self.lr = lr
         self.tol = tol
         self.dtype = dtype
         self.noisy_operation = (lambda y, n : y + n)
+        self.lipschitz = lipschitz
 
     def attach_local_data(self, X, y):
         self.X = X
