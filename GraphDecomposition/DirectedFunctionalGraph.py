@@ -22,10 +22,11 @@ class DirectedFunctionalGraph(nx.DiGraph):
                 self.remove_edge(edge, v_of_edge)
             self.nodes[v_of_edge].pop("parents")
         required_inputs = self.nodes[v_of_edge]["component"].inputs
+        assert len(u_of_edge) == required_inputs, f"node {v_of_edge} require {required_inputs} parents, but {len(u_of_edge)} supplied"
         if required_inputs > 1:
-            assert len(u_of_edge) == required_inputs, f"node {v_of_edge} require {required_inputs} parents, only {len(u_of_edge)} supplied"
             for u in u_of_edge:
-                if not u is None:
+                if u is not None:
+                    print(f"adding edge from {u} to {v_of_edge}")
                     super().add_edge(u, v_of_edge, **attr)
         else:
             super().add_edge(u_of_edge[0], v_of_edge, **attr)
@@ -36,11 +37,20 @@ class DirectedFunctionalGraph(nx.DiGraph):
             component = self.nodes[node]["component"]
             if node in sources:
                 x = sources[node]
+                if component.inputs > 1:
+                    for i in range(component.inputs):
+                        if x[i] is None:    # Input not provided, query upwards
+                            assert "parents" in self.nodes[node], f"Parents for node {node} required but not defined"
+                            assert self.nodes[node]["parents"][i] is not None, f"Parent {i} for node {node} required but not defined"
+                            x[i] = backward_(self.nodes[node]["parents"][i])
                 if not torch.is_tensor(x):
                     x = torch.tensor(x)
                 return component(x)
             assert "parents" in self.nodes[node]
-            input = [backward_(parent) for parent in self.nodes[node]["parents"]]
+            input = []
+            for i, parent in enumerate(self.nodes[node]["parents"]):
+                assert parent is not None, f"Input {i} for node {node} is required but not provided"
+                input.append(backward_(parent))
             input = torch.tensor(input)
             return component(input)
         return backward_(sink)
