@@ -28,7 +28,7 @@ class Model(nn.Module):
 
     def get_local_loss(self):
         assert self.X != None and self.y != None, "no local data is found. Cannot get local loss!"
-        output = self(self.X, grad=True)
+        output = self(self.X, grad=False)
         mse = nn.MSELoss()
         loss = mse(output, self.y)
         return loss
@@ -62,6 +62,15 @@ class Model(nn.Module):
         y.backward()
         g = recursive_map(lambda p: p.grad, params)
         return g
+
+    def do_one_descent_on_local(self):
+        optimizer = optim.Adam(self.params, lr=self.lr)
+        optimizer.zero_grad()
+        output = self(self.X, grad=True)
+        mse = nn.MSELoss()
+        loss = mse(output, self.y)
+        loss.backward()
+        optimizer.step()
 
     def fit(self, X, y, itr_max = 1000):
         optimizer = optim.Adam(self.params, lr = self.lr)
@@ -98,7 +107,7 @@ class Model(nn.Module):
     def evaluate(self, X, *params):
         return X
 
-    def forward(self, X, params = [], grad = False, noisy=False, noise_mean = 0.1, noise_std = 0.05, noisy_operation = None):
+    def forward(self, X, params = [], grad = False, noisy=False, noise_mean = 0.0, noise_std = 0.5, noisy_operation = None):
         if self.inputs > 1:
             assert X.shape[0] == self.inputs
         if len(params) == 0:

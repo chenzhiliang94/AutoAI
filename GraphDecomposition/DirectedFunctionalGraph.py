@@ -1,8 +1,11 @@
 import networkx as nx
 import torch
 import warnings
+import torch.nn as nn
 
 class DirectedFunctionalGraph(nx.DiGraph):
+    system_x = None
+    system_y = None
     def __init__(self, incoming_graph_data=None, **attr):
         super().__init__(incoming_graph_data, **attr)
 
@@ -54,3 +57,49 @@ class DirectedFunctionalGraph(nx.DiGraph):
             input = torch.tensor(input)
             return component(input)
         return backward_(sink)
+
+    def get_system_loss_with_inputs(self, X, y):
+        mse = nn.MSELoss()
+        y_pred = []
+        for x in X:
+            y_pred.append(self.forward({1: x[0], 2: x[1], 7: x[2]}, "Blackbox6"))
+        loss = mse(torch.tensor(y_pred), y)
+        return loss
+
+    def get_system_loss(self):
+        return self.get_system_loss_with_inputs(self.system_x, self.system_y)
+
+    def get_local_losses(self):
+        losses = []
+        for n in self.nodes:
+            if "Blackbox" in str(n):
+                continue
+            losses.append(self.nodes[n]["components"].get_local_loss())
+        return losses
+
+    def get_num_components(self):
+        component = [x for x in self.nodes if "Blackbox" not in str(self.nodes[x])]
+        return len(component)
+    def get_all_params(self):
+        dict_ = {}
+        param = []
+        for n in self.nodes:
+            if "Blackbox" in str(n):
+                continue
+            dict_[n] = self.nodes[n]["component"].get_params()
+            param += list(self.nodes[n]["component"].get_params())
+        return dict_, param
+
+    def assign_params(self, params : dict):
+        for n in self.nodes:
+            if "Blackbox" in str(n):
+                continue
+            self.nodes[n]["component"].set_params(params[n])
+
+    def assign_params(self, params):
+        for n in self.nodes:
+            if "Blackbox" in str(n):
+                continue
+            num_param_to_assign = len(self.nodes[n]["component"].get_params())
+            self.nodes[n]["component"].set_params(params[:num_param_to_assign])
+            params = params[num_param_to_assign:]

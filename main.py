@@ -1,15 +1,19 @@
-# import math
-# import numpy as np
-# import matplotlib.pyplot as plt
-# import torch
-#
-# from Components.ConditionalNormalDistribution import ConditionalNormalDistribution
-# from Components.DifferentiablePolynomial import DifferentiablePolynomial
-# from Models.ModelExponential import ModelExponential
-# from Models.ModelSinCos import ModelSinCos
-# from Plotting.HeatMapLossFunction import *
-# from Composition.SequentialSystem import SequentialSystem
-# from Search.skeleton import BO_skeleton
+import math
+import numpy as np
+import matplotlib.pyplot as plt
+import torch
+import copy
+from collections import defaultdict
+
+from Components.ConditionalNormalDistribution import ConditionalNormalDistribution
+from Components.DifferentiablePolynomial import DifferentiablePolynomial
+from Models.ModelExponential import ModelExponential
+from Models.ModelSinCos import ModelSinCos
+from Plotting.HeatMapLossFunction import *
+from Composition.SequentialSystem import SequentialSystem
+from Search.skeleton import BO_skeleton, BO_graph
+
+from helper import *
 #
 # # f = ConditionalNormalDistribution()
 # f = DifferentiablePolynomial() # black box function (comes second)
@@ -96,40 +100,123 @@ from Models.ModelWeightedSum import *
 from Models.ModelExponential import *
 
 G = DirectedFunctionalGraph()
+#
+# G = nx.DiGraph()
+# G.add_node(0, idx="1", component=ModelWeightedSum())
+# G.add_node(1, idx="1", component=DifferentiablePolynomial())
+# G.add_node(2, idx="2", component=ModelSinCos())
+# G.add_node("BlackboxB", idx="3",  component=ModelWeightedSum())
+# G.add_node(8, idx="8", component=DifferentiablePolynomial())
+# G.add_node(4, idx="4", component=ModelSinCos())
+# G.add_node(5, idx="5", component=ModelWeightedSum())
+# G.add_node(7, idx="7", component=DifferentiablePolynomial())
+# G.add_node("exit", idx="8", component=ModelWeightedSum())
+# G.add_node("BlackboxA", idx="6",  component=DifferentiablePolynomial())
+# G.add_node(6, idx="6", component=ModelWeightedSum())
+#
+# G.add_edge(0, 2)
+# G.add_edge(1, 2)
+# G.add_edge(1, 5)
+# G.add_edge(2, "BlackboxB")
+# G.add_edge("BlackboxB",8)
+# G.add_edge(8,7)
+# G.add_edge(5, "BlackboxA")
+# G.add_edge("BlackboxB", 4)
+# G.add_edge("BlackboxA", 4)
+# G.add_edge(4, 7)
+# G.add_edge(7, "exit")
+# G.add_edge(6, 5)
+#
+# all_black_box = ["BlackboxA", "BlackboxB"]
+# all_decomp = find_all_decomposition_full(all_black_box, G)
+# all_valid_decomp = get_all_valid_decomposition(all_decomp)
+# l = 1
+# best_decomposition, score = get_best_decomposition(all_valid_decomp, G, l=1)
+# print("\n", "Best decomposition:")
+# print(goodness_measure(G, best_decomposition, l))
+#
+# plot(G)
+# plt.show()
 
-G = nx.DiGraph()
-G.add_node(0, idx="1", component=ModelWeightedSum())
-G.add_node(1, idx="1", component=DifferentiablePolynomial())
-G.add_node(2, idx="2", component=ModelSinCos())
-G.add_node("BlackboxB", idx="3",  component=ModelWeightedSum())
-G.add_node(8, idx="8", component=DifferentiablePolynomial())
-G.add_node(4, idx="4", component=ModelSinCos())
-G.add_node(5, idx="5", component=ModelWeightedSum())
-G.add_node(7, idx="7", component=DifferentiablePolynomial())
-G.add_node("exit", idx="8", component=ModelWeightedSum())
-G.add_node("BlackboxA", idx="6",  component=DifferentiablePolynomial())
-G.add_node(6, idx="6", component=ModelWeightedSum())
+ground_truth_param = {1 : np.array([0.7, 1.1, -0.5]), 2: np.array([0.4, 0.5]),
+                      "Blackbox3":np.array([1.1, -0.5]), 4:np.array([1.1, -0.5]), "Blackbox5":np.array([0.7, -0.5]),
+                      "Blackbox6": np.array([0.7, 1.1]), 7: np.array([0.7, -0.5])}
+def get_data(component : Model, input_range_lower, input_range_upper, ground_truth_param):
+    # ground truth for training
+    component = copy.deepcopy(component)
+    component.set_params(ground_truth_param)
 
-G.add_edge(0, 2)
-G.add_edge(1, 2)
-G.add_edge(1, 5)
-G.add_edge(2, "BlackboxB")
-G.add_edge("BlackboxB",8)
-G.add_edge(8,7)
-G.add_edge(5, "BlackboxA")
-G.add_edge("BlackboxB", 4)
-G.add_edge("BlackboxA", 4)
-G.add_edge(4, 7)
-G.add_edge(7, "exit")
-G.add_edge(6, 5)
+    X_local = torch.tensor(np.random.uniform(input_range_lower, input_range_upper, size=100))
+    y_local = component.forward(X_local, noisy=True)  # labeling effort of A
 
-all_black_box = ["BlackboxA", "BlackboxB"]
-all_decomp = find_all_decomposition_full(all_black_box, G)
-all_valid_decomp = get_all_valid_decomposition(all_decomp)
-l = 1
-best_decomposition, score = get_best_decomposition(all_valid_decomp, G, l=1)
-print("\n", "Best decomposition:")
-print(goodness_measure(G, best_decomposition, l))
+    return X_local, y_local
 
-plot(G)
-plt.show()
+def get_data_tree(component : Model, input_range_lower, input_range_upper, ground_truth_param):
+    # ground truth for training
+    component = copy.deepcopy(component)
+    component.set_params(ground_truth_param)
+
+    X_local = torch.tensor(np.random.uniform(input_range_lower, input_range_upper, size=(2,100)))
+    y_local = component.forward(X_local, noisy=True)  # labeling effort of A
+
+    return X_local, y_local
+
+DG = DirectedFunctionalGraph()
+
+# white box components
+DG.add_node(1, component=DifferentiablePolynomial())
+x,y = get_data(DG.nodes[1]["component"], 0, 5, np.array([0.7, 1.1, -0.5]))
+DG.nodes[1]["component"].attach_local_data(x,y)
+
+DG.add_node(2, component=ModelSinCos())
+x,y = get_data(DG.nodes[2]["component"], -3, 6, np.array([0.4, 0.5]))
+DG.nodes[2]["component"].attach_local_data(x,y)
+
+DG.add_node(4, component=ModelExponential())
+x,y = get_data(DG.nodes[4]["component"], 0, 5, np.array([1.1, -0.5]))
+DG.nodes[4]["component"].attach_local_data(x,y)
+
+DG.add_node(7, component=ModelSinCos())
+x,y = get_data(DG.nodes[7]["component"], 0, 5, np.array([0.7, -0.5]))
+DG.nodes[7]["component"].attach_local_data(x,y)
+
+# black box components
+DG.add_node("Blackbox3", component=ModelWeightedSum())
+DG.nodes["Blackbox3"]["component"].set_params(ground_truth_param["Blackbox3"])
+
+DG.add_node("Blackbox5", component=ModelWeightedSum())
+DG.nodes["Blackbox5"]["component"].set_params(ground_truth_param["Blackbox5"])
+
+DG.add_node("Blackbox6", component=ModelWeightedSum())
+DG.nodes["Blackbox6"]["component"].set_params(ground_truth_param["Blackbox6"])
+
+# Test warning for multiple parents
+DG.add_edge(("Blackbox6",7),"Blackbox3")
+DG.add_edge((1,2),"Blackbox3")
+
+DG.add_edge((4,2),"Blackbox5")
+
+# Test warning for singular parents
+DG.add_edge(2,4)
+DG.add_edge("Blackbox3",4)
+DG.add_edge((7,"Blackbox5"),"Blackbox6")
+
+# nx.draw_networkx(DG)
+# plt.show()
+
+X_end, y_end = get_end_to_end_data(DG, ground_truth_param)
+DG.system_x = X_end
+DG.system_y = y_end
+
+# grad descent
+# show_system_loss_from_grad_descent(DG, ground_truth_param)
+
+# vanilla BO
+BO_graph(DG)
+
+
+
+
+
+
+

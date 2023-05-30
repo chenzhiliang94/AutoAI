@@ -5,7 +5,7 @@ class DifferentiablePolynomial(Model):
     '''
     x^1.15-1.4x+e^-0.3x
     '''
-    def __init__(self, theta_0_=2, theta_1_=1.4, theta_2_=0.3, lr=0.01, tol = 1e-05, dtype=torch.float64):
+    def __init__(self, theta_0_=1, theta_1_=1, theta_2_=1, lr=0.01, tol = 1e-05, dtype=torch.float64):
         super().__init__(lr=lr, tol=tol, dtype = dtype)
         self.set_params([theta_0_,theta_1_,theta_2_])
 
