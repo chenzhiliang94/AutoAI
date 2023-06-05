@@ -1,8 +1,10 @@
+import itertools
+
 import networkx as nx
 import torch
 import warnings
 import torch.nn as nn
-
+import numpy as np
 class DirectedFunctionalGraph(nx.DiGraph):
     system_x = None
     system_y = None
@@ -74,12 +76,12 @@ class DirectedFunctionalGraph(nx.DiGraph):
         for n in self.nodes:
             if "Blackbox" in str(n):
                 continue
-            losses.append(self.nodes[n]["components"].get_local_loss())
-        return losses
+            losses.append(self.nodes[n]["component"].get_local_loss())
+        return torch.DoubleTensor([losses])
 
-    def get_num_components(self):
-        component = [x for x in self.nodes if "Blackbox" not in str(self.nodes[x])]
-        return len(component)
+    def get_components(self):
+        components = [self.nodes[x] for x in self.nodes if "Blackbox" not in str(x)]
+        return components
     def get_all_params(self):
         dict_ = {}
         param = []
@@ -103,3 +105,83 @@ class DirectedFunctionalGraph(nx.DiGraph):
             num_param_to_assign = len(self.nodes[n]["component"].get_params())
             self.nodes[n]["component"].set_params(params[:num_param_to_assign])
             params = params[num_param_to_assign:]
+
+    # look for parameters which yield the input losses
+    def reverse_local_loss_lookup(self, losses, method="naive_climb"):
+        components = self.get_components()
+        assert len(components) == len(losses), "loss input size should be equals to number of components!"
+
+        norm_difference = torch.subtract(self.get_local_losses(), torch.tensor(losses))
+        print("loss difference norm before: ", torch.norm(norm_difference))
+        print("target losses: ", losses)
+        print("current losses: ", self.get_local_losses())
+
+        # do gradient ascent/descent until loss is reached from current parameter configuration
+        if method == "naive_climb":
+            for loss_comp in zip(components, losses):
+                component = loss_comp[0]["component"]
+                loss_target = loss_comp[1]
+
+                itr = 0
+                while itr < 1000 and abs(component.get_local_loss() - loss_target) / loss_target > 1e-02: # % threshold
+                    curr_loss = component.get_local_loss()
+                    if curr_loss > loss_target:
+                        component.do_one_descent_on_local()
+                    else:
+                        component.do_one_ascent_on_local() # can replace this simply with another custom loss function
+                    next_loss = component.get_local_loss()
+                    itr+=1
+                    if abs(next_loss - curr_loss) < 1e-05:
+                        break
+
+        # initialise multiple parameter initialization and search for the best
+        if method == "multi_search":
+            params = []
+            num_starting_points = 3
+            for loss_comp in zip(components, losses):
+                param_candidates = []
+                for n in range(num_starting_points):
+                    component = loss_comp[0]["component"]
+                    loss_target = loss_comp[1]
+                    component.random_initialise_params()
+                    itr = 0
+                    while itr < 500 and abs(component.get_local_loss() - loss_target) / loss_target > 1e-02: # % threshold
+                        curr_loss = component.get_local_loss()
+                        if curr_loss > loss_target:
+                            component.do_one_descent_on_local()
+                        else:
+                            component.do_one_ascent_on_local() # can replace this simply with another custom loss function
+                        next_loss = component.get_local_loss()
+                        itr+=1
+                        if abs(next_loss - curr_loss) < 1e-05:
+                            break
+                    param_candidates.append(list(component.get_params()))
+                params.append(param_candidates)
+
+            all_idx_combination = len(params) * [[x for x in range(num_starting_points)]]
+            all_cartesian_idx = itertools.product(*all_idx_combination)
+            best_system_loss = 10000
+            best_param = None
+            for idx in all_cartesian_idx:
+                candidate_param = []
+                for i, cartesian_idx in enumerate(list(idx)):
+                    candidate_param += params[i][cartesian_idx]
+                self.assign_params(candidate_param)
+                candidate_system_loss = self.get_system_loss()
+                if candidate_system_loss < best_system_loss:
+                    best_system_loss = candidate_system_loss
+                    best_param = candidate_param
+                print(candidate_system_loss)
+        self.assign_params(best_param)
+        norm_difference = torch.subtract(torch.tensor(self.get_local_losses()), torch.tensor(losses))
+        print("loss difference norm after: ", torch.norm(norm_difference))
+
+    def fit_locally_partial(self, itr=50):
+        for n in self.nodes:
+            if "Blackbox" in str(n):
+                continue
+            for i in range(50):
+                self.nodes[n]["component"].do_one_descent_on_local()
+
+
+

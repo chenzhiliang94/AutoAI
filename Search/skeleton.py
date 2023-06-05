@@ -111,14 +111,14 @@ def BO_graph(system : DirectedFunctionalGraph, printout=True):
     return parameter_trials, best_param
 
 
-def BO_graph_local_loss(system : DirectedFunctionalGraph, printout=True):
+def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, printout=True):
     all_params = []
     for node in system.nodes:
         if "Blackbox" in str(node):
             continue
 
-    next_param = torch.DoubleTensor([system.get_local_losses()])
-    target = []
+    next_param = system.get_local_losses()
+    target = [[-system.get_system_loss()]]
     input_param = next_param
     best_param = None
     best_objective = -10000
@@ -128,9 +128,8 @@ def BO_graph_local_loss(system : DirectedFunctionalGraph, printout=True):
             print("Current best objective: ", best_objective)
 
         ###
-        # find param which reverse maps to local loss
-        something_something = input_param
-        system.assign_params(something_something)
+        # assign param which reverse maps to local loss
+        system.reverse_local_loss_lookup(next_param[0], method="multi_search")
         ###
 
         current_loss = - system.get_system_loss()
@@ -141,20 +140,21 @@ def BO_graph_local_loss(system : DirectedFunctionalGraph, printout=True):
         UCB = None
         gp = None
 
+        input_param = torch.cat((input_param, system.get_local_losses()), 0)
         target.append([current_loss])
         Y = torch.DoubleTensor(target)
 
         # parameterize standardization and model
         # target = standardize(target)
-        gp = SingleTaskGP(input_param, Y)
+
+        gp = SingleTaskGP(input_param.double(), Y)
         mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
         fit_gpytorch_mll(mll);
         UCB = UpperConfidenceBound(gp, beta=1)
 
-        bounds = torch.stack([torch.ones(parameter_trials.shape[-1]) * 0, 2 * torch.ones(parameter_trials.shape[-1])])
         candidate, acq_value = optimize_acqf(
             UCB, bounds=bounds, q=1, num_restarts=1, raw_samples=20,
         )
+        print("candidate:", candidate)
         next_param = candidate
-        input_param = torch.cat((input_param, next_param), 0)
-    return parameter_trials, best_param
+    return best_param

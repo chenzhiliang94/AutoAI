@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 
 def islist(obj):
     return isinstance(obj, list)
@@ -71,6 +72,25 @@ class Model(nn.Module):
         loss = mse(output, self.y)
         loss.backward()
         optimizer.step()
+
+    def do_one_ascent_on_local(self):
+        optimizer = optim.Adam(self.params, lr=self.lr) # negative learning rate to climb instead
+        optimizer.zero_grad()
+        output = self(self.X, grad=True)
+        mse = nn.MSELoss()
+
+        def my_loss(output, target):
+            loss = torch.mean((output - target) ** 2)
+            return - loss
+
+        loss = my_loss(output, self.y)
+        loss.backward()
+        optimizer.step()
+
+    def random_initialise_params(self):
+        s = self.get_params()
+        s = np.random.uniform(-2, 2, size=len(s))
+        self.set_params(list(s))
 
     def fit(self, X, y, itr_max = 1000):
         optimizer = optim.Adam(self.params, lr = self.lr)

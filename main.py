@@ -11,7 +11,7 @@ from Models.ModelExponential import ModelExponential
 from Models.ModelSinCos import ModelSinCos
 from Plotting.HeatMapLossFunction import *
 from Composition.SequentialSystem import SequentialSystem
-from Search.skeleton import BO_skeleton, BO_graph
+from Search.skeleton import BO_skeleton, BO_graph, BO_graph_local_loss
 
 from helper import *
 #
@@ -209,11 +209,15 @@ DG.system_x = X_end
 DG.system_y = y_end
 
 # grad descent
-# show_system_loss_from_grad_descent(DG, ground_truth_param)
+# all_losses = show_system_loss_from_grad_descent(DG, ground_truth_param,plot=True)
 
 # vanilla BO
-BO_graph(DG)
+# BO_graph(DG)
 
+# BO with local loss -> system loss
+bounds = torch.tensor([[0.75, 0.25,0.7,0.37],[100,0.75,30,0.5]])
+DG.fit_locally_partial()
+BO_graph_local_loss(DG, bounds)
 
 
 
