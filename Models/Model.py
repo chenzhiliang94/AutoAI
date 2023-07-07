@@ -29,7 +29,7 @@ class Model(nn.Module):
 
     def get_local_loss(self):
         assert self.X != None and self.y != None, "no local data is found. Cannot get local loss!"
-        output = self(self.X, grad=False)
+        output = self(self.X, grad=False, noise_mean=0.0, noise_std=0.0)
         mse = nn.MSELoss()
         loss = mse(output, self.y)
         return loss
@@ -64,8 +64,11 @@ class Model(nn.Module):
         g = recursive_map(lambda p: p.grad, params)
         return g
 
-    def do_one_descent_on_local(self):
-        optimizer = optim.Adam(self.params, lr=self.lr)
+    def do_one_descent_on_local(self,lr=None):
+        input_lr = self.lr
+        if lr != None:
+            input_lr = lr
+        optimizer = optim.Adam(self.params, lr=input_lr)
         optimizer.zero_grad()
         output = self(self.X, grad=True)
         mse = nn.MSELoss()
@@ -74,7 +77,7 @@ class Model(nn.Module):
         optimizer.step()
 
     def do_one_ascent_on_local(self):
-        optimizer = optim.Adam(self.params, lr=self.lr) # negative learning rate to climb instead
+        optimizer = optim.Adam(self.params, lr=self.lr)
         optimizer.zero_grad()
         output = self(self.X, grad=True)
         mse = nn.MSELoss()
@@ -89,7 +92,12 @@ class Model(nn.Module):
 
     def random_initialise_params(self):
         s = self.get_params()
-        s = np.random.uniform(-2, 2, size=len(s))
+        s = np.random.uniform(-1, 1, size=len(s))
+        self.set_params(list(s))
+    
+    def set_default_param(self):
+        s = self.get_params()
+        s = np.random.uniform(1, 1, size=len(s))
         self.set_params(list(s))
 
     def fit(self, X, y, itr_max = 1000):
@@ -127,7 +135,7 @@ class Model(nn.Module):
     def evaluate(self, X, *params):
         return X
 
-    def forward(self, X, params = [], grad = False, noisy=False, noise_mean = 0.0, noise_std = 0.5, noisy_operation = None):
+    def forward(self, X, params = [], grad = False, noisy=False, noise_mean = 0.0, noise_std = 0.05, noisy_operation = None):
         if self.inputs > 1:
             assert X.shape[0] == self.inputs
         if len(params) == 0:

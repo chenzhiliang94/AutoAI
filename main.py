@@ -11,7 +11,7 @@ from Models.ModelExponential import ModelExponential
 from Models.ModelSinCos import ModelSinCos
 from Plotting.HeatMapLossFunction import *
 from Composition.SequentialSystem import SequentialSystem
-from Search.skeleton import BO_skeleton, BO_graph, BO_graph_local_loss
+from SearchAlgorithm.skeleton import BO_skeleton, BO_graph, BO_graph_local_loss
 
 from helper import *
 #

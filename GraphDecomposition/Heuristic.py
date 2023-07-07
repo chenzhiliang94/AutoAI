@@ -4,6 +4,10 @@ import itertools
 import torch
 import math
 
+import copy
+
+from GraphDecomposition.DirectedFunctionalGraph import *
+
 def plot(G):
     pos = nx.spectral_layout(G)
     nx.draw(G, pos=pos, with_labels = True)
@@ -133,6 +137,11 @@ def get_all_valid_decomposition(black_box_decomp):
         for x in s:
             if len(x) == 1:
                 return False
+        # ({1, 2, 4, 'Blackbox3'}, {2, 4, 'Blackbox5'}, {10, 7, 8, 9, 'Blackbox6'})
+        for idx_set_one in range(len(s)):
+            for idx_set_two in range(idx_set_one + 1, len(s)):
+                if len(s[idx_set_one].intersection(s[idx_set_two]))!=0: # remove overlapping
+                    return False
         return True
     # remove combination with overlapping components (might want to allow them in the future for future research challenges)
     all_decomposition = [x for x in result if len(set.intersection(*x))==0 and is_valid(x)]
@@ -175,14 +184,55 @@ def goodness_measure(DG, decomposition, l=0.1, debug=False):
     score = (total_error_support) / (1 + (1 * total_error_leakage + l * math.sqrt(max_param)))
     print("decomposition score: ", score)
     return score
-def get_best_decomposition(decomposition, DG, l=0.1):
+
+def goodness_measure_mutual_information(DG, decomposition):
+    total_mutual_info = 0.0
+    for separated_part in decomposition:  # separated_part is a cluster of 
+        print("cluster in decomposition: ", separated_part)
+        # we reject one-sized cluster (since it is the black box comp)
+        total_mutual_info -= len(separated_part)/100
+        if len(separated_part) == 0:
+            continue
+
+        for node in separated_part:
+            if "Blackbox" in str(node):
+                continue
+            
+            all_neighbours = DG.successors(node)
+            all_neighbours = [x for x in all_neighbours if
+                              x not in separated_part]  # avoid neighbours already in cluster
+            for n in all_neighbours:
+                total_mutual_info += DG.nodes[node]["mi"]  # assuming ball is 1, need to modify later possibly
+
+    score = -total_mutual_info
+    print("decomposition score: ", score)
+    return score
+
+def get_best_decomposition(decomposition, DG, l=0.1, measure = "mi"):
     # input: tuple of set
 
     best_decomposition = None
-    best_score = 0
+    best_score = -10000000
     for d in decomposition:
-        score = goodness_measure(DG, d, l)
-        if score > best_score:
+        if measure == "mi":
+            score = goodness_measure_mutual_information(DG, d)
+        elif measure == "lip":
+            score = goodness_measure(DG,d,l)
+        if score >= best_score:
             best_score = score
             best_decomposition = d
     return best_decomposition, best_score
+
+def luke_partition_based_on_mi(DG : DirectedFunctionalGraph):
+    # assume mi is attached to each DG already
+    
+    # step 1, for each node with multiple childen, remove edges until one left (chosen randomly, because each of the edge has same weight)
+    graph =  copy.deepcopy(DG)
+    
+    # step 2, get dict of edge : mi from the DG (simple)
+    
+    # step 3, lukes_partitioning(G, max_size, node_weight=None, edge_weight=None)
+    
+    return
+    
+    

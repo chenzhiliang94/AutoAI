@@ -5,7 +5,7 @@ from gpytorch.mlls import ExactMarginalLogLikelihood, SumMarginalLogLikelihood
 from botorch.optim import optimize_acqf
 from Composition.SequentialSystem import SequentialSystem
 from botorch.acquisition import UpperConfidenceBound
-from Search.AcquisitionFunction import *
+from SearchAlgorithm.AcquisitionFunction import *
 import numpy as np
 
 from GraphDecomposition.DirectedFunctionalGraph import *
@@ -67,8 +67,9 @@ def BO_skeleton(system: SequentialSystem, objective="system", model="single_task
         input_param = torch.cat((input_param, next_param), 0)
     return parameter_trials, best_loss_tuples, best_param
 
-def BO_graph(system : DirectedFunctionalGraph, printout=True):
-    all_params = []
+def BO_graph(system : DirectedFunctionalGraph, printout=True, iteration=50):
+    system.random_initialize_param()
+    system.fit_locally_partial(10)
     for node in system.nodes:
         if "Blackbox" in str(node):
             continue
@@ -79,7 +80,8 @@ def BO_graph(system : DirectedFunctionalGraph, printout=True):
     input_param = next_param
     best_param = None
     best_objective = -10000
-    for i in range(100):
+    all_best_losses = []
+    for i in range(iteration):
         if printout:
             print("BO iteration: ", i)
             print("Current best objective: ", best_objective)
@@ -88,7 +90,8 @@ def BO_graph(system : DirectedFunctionalGraph, printout=True):
         if current_loss > best_objective:
             best_objective = current_loss
             best_param = system.get_all_params()[1]
-
+        all_best_losses.append(best_objective)
+        
         UCB = None
         gp = None
 
@@ -102,19 +105,19 @@ def BO_graph(system : DirectedFunctionalGraph, printout=True):
         fit_gpytorch_mll(mll);
         UCB = UpperConfidenceBound(gp, beta=1)
 
-        bounds = torch.stack([torch.ones(parameter_trials.shape[-1]) * 0, 2 * torch.ones(parameter_trials.shape[-1])])
+        bounds = torch.stack([torch.ones(parameter_trials.shape[-1]) * -1, torch.ones(parameter_trials.shape[-1])])
         candidate, acq_value = optimize_acqf(
             UCB, bounds=bounds, q=1, num_restarts=1, raw_samples=20,
         )
         next_param = candidate
         input_param = torch.cat((input_param, next_param), 0)
-    return parameter_trials, best_param
+    return all_best_losses, input_param, best_param
 
 
-def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, printout=True):
+def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, method, printout=True, iteration=50):
     all_params = []
     for node in system.nodes:
-        if "Blackbox" in str(node):
+        if "Dummy" in str(node) or "Blackbox" in str(node):
             continue
 
     next_param = system.get_local_losses()
@@ -122,21 +125,23 @@ def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, 
     input_param = next_param
     best_param = None
     best_objective = -10000
-    for i in range(100):
+    all_best_losses = []
+    for i in range(iteration):
         if printout:
             print("BO iteration: ", i)
             print("Current best objective: ", best_objective)
 
         ###
         # assign param which reverse maps to local loss
-        system.reverse_local_loss_lookup(next_param[0], method="multi_search")
+        system.reverse_local_loss_lookup(next_param[0], method)
         ###
 
         current_loss = - system.get_system_loss()
         if current_loss > best_objective:
             best_objective = current_loss
-            best_param = system.get_all_params()[1]
-
+            best_param = system.get_all_params()[1] 
+        all_best_losses.append(best_objective)
+        
         UCB = None
         gp = None
 
@@ -150,11 +155,11 @@ def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, 
         gp = SingleTaskGP(input_param.double(), Y)
         mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
         fit_gpytorch_mll(mll);
-        UCB = UpperConfidenceBound(gp, beta=1)
+        UCB = UpperConfidenceBound(gp, beta=0.1)
 
         candidate, acq_value = optimize_acqf(
             UCB, bounds=bounds, q=1, num_restarts=1, raw_samples=20,
         )
         print("candidate:", candidate)
         next_param = candidate
-    return best_param
+    return all_best_losses, best_param
