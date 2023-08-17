@@ -11,10 +11,10 @@ import numpy as np
 import copy
 from collections import defaultdict
 from sklearn.feature_selection import mutual_info_regression
+import time
 
 def get_end_to_end_data(dg, gt_param):
     #ground truth end to end data from a graph
-    dg = copy.deepcopy(dg)
     for node_idx in dg.nodes:
         if node_idx in gt_param:
             dg.nodes[node_idx]["component"].set_params(gt_param[node_idx])
@@ -32,6 +32,42 @@ def get_end_to_end_data(dg, gt_param):
         y.append(dg.forward(input_dict, exit, perturbed_black_box=False)) # when generating data, no perturbation
     return torch.tensor(X_local), torch.tensor(y)
 
+def get_end_to_end_nn_data(dg, gt_param):
+    #ground truth end to end data from a graph
+    for node_idx in dg.nodes:
+        if node_idx in gt_param:
+            print("setting: ", gt_param[node_idx])
+            dg.nodes[node_idx]["component"].set_params(gt_param[node_idx])
+    
+    y_system = []
+    exit = dg.get_exit()
+    entry = dg.get_entry()
+    X_system = []
+
+    for idx in range(100): # 100 datapoints, can adjust
+        input_data = []
+        input_dict = {}
+        for node_idx in entry:
+            if "nn" in str(node_idx): # if neural network; assume batch size is also 100
+                dg.nodes[node_idx]["component"].set_oracle_mode(True)
+                input = dg.nodes[node_idx]["component"].X[idx]
+                input = input.unsqueeze(0)
+                input = input.unsqueeze(1)
+                input_data.append(input)
+                input = dg.nodes[node_idx]["component"].y[idx] # hack, our model is in oracle mode
+            else: # if model, or black box
+                input = np.random.uniform(0, 5, dg.nodes[node_idx]["component"].inputs)
+                input_data.append(input)
+            input_dict[node_idx] = input
+        X_system.append(input_data)
+
+        output = dg.forward(input_dict, exit, perturbed_black_box=False)
+        y_system.append(output) # when generating data, no perturbation
+        for node_idx in entry:
+            if "nn" in str(node_idx):
+                dg.nodes[node_idx]["component"].set_oracle_mode(False)
+    return X_system, torch.tensor(y_system)
+    
 '''
 Given a 1) DG, 2) a set of sub-system 3)ground truth param,
 Generate a new DG with end to end data inside
@@ -83,7 +119,7 @@ def show_system_loss_from_grad_descent(DG, itr=500, plot=False):
             losses[node_idx].append(local_loss)
             last_loss.append(local_loss)
         losses["system"].append(DG.get_system_loss())
-    
+    print("final system loss: ", DG.get_system_loss())
     if plot:
         for l in losses:
             plt.plot(range(num_itr), losses[l], label=str(l)+" loss")
@@ -91,7 +127,7 @@ def show_system_loss_from_grad_descent(DG, itr=500, plot=False):
         plt.ylim(0,3)
         plt.title("component and system loss with local gradient descent")
         plt.show()
-    return last_loss
+    return last_loss, losses
 
 '''
 Find M.I of each component loss w.r.t system loss

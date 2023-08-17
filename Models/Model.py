@@ -23,6 +23,9 @@ class Model(nn.Module):
         self.noisy_operation = (lambda y, n : y + n)
         self.lipschitz = lipschitz
 
+    def is_nn(self):
+        return False
+    
     def attach_local_data(self, X, y):
         self.X = X
         self.y = y
@@ -89,9 +92,27 @@ class Model(nn.Module):
         loss = my_loss(output, self.y)
         loss.backward()
         optimizer.step()
+    
+    def descent_to_target_loss(self, target_loss):
+        def my_loss(output, target, target_loss):
+            criterion = nn.MSELoss()
+            mse_loss = criterion(output, target)
+            return (target_loss - mse_loss)**2
+        
+        optimizer = optim.Adam(self.params, lr=self.lr)
+        for x in range(100):
+            optimizer.zero_grad()
+            output = self(self.X, grad=True)
+            loss = my_loss(output, self.y, target_loss)
+            loss.backward()
+            optimizer.step()
+        
+        
 
-    def random_initialise_params(self):
-        s = self.get_params()
+    def random_initialize_param(self,seed=None):
+        if seed is not None:
+            np.random.seed = seed
+        s = self.params
         s = np.random.uniform(-1, 1, size=len(s))
         self.set_params(list(s))
     

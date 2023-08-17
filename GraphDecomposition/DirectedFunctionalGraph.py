@@ -8,8 +8,9 @@ import torch.nn as nn
 import numpy as np
 from random import sample
 from collections import OrderedDict
-
+import matplotlib.pyplot as plt
 from Models.ModelConstant import ModelConstant
+
 class DirectedFunctionalGraph(nx.DiGraph):
     system_x = None
     system_y = None
@@ -60,7 +61,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                     return component(x,noisy=False)
                 if "Blackbox" in str(node):
                     if perturbed_black_box:
-                        return component(x,noisy=True, noise_mean=0.1)
+                        return component(x,noisy=True, noise_mean=-0.1)
                     return component(x,noisy=True, noise_mean=0.0)
                 return component(x,noisy=False)
             
@@ -75,7 +76,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                     return component(input,noisy=False)
             if "Blackbox" in str(node):
                 if perturbed_black_box:
-                    return component(input,noisy=True, noise_mean=0.1)
+                    return component(input,noisy=True, noise_mean=-0.1)
                 return component(input,noisy=True, noise_mean=0.0)
             return component(input, noisy=True)
         return backward_(sink)
@@ -120,6 +121,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                 input_dict[node_idx] = input
             y_pred.append(self.forward(input_dict, exit, perturbed_black_box=True))
         loss = mse(torch.tensor(y_pred), y)
+        #print("MAE loss: ", nn.L1Loss()(torch.tensor(y_pred), y))
         return loss
 
     def get_system_loss(self):
@@ -136,6 +138,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
     def get_components(self):
         components = OrderedDict((x, self.nodes[x]) for x in self.nodes if "Dummy" not in str(x) and "Blackbox" not in str(x))
         return components
+    
     def get_all_params(self):
         dict_ = {}
         param = []
@@ -168,10 +171,79 @@ class DirectedFunctionalGraph(nx.DiGraph):
         components = self.get_components().values()
         assert len(components) == len(losses), "loss input size should be equals to number of components!"
 
-        norm_difference = torch.subtract(self.get_local_losses(), torch.tensor(losses))
-        #print("loss difference norm before: ", torch.norm(norm_difference))
-        #print("target losses: ", losses)
-        #print("current losses: ", self.get_local_losses())
+        if method == "nn_lookup":
+            print("loss to look for: ", losses)
+            params = []
+            num_starting_points = 5
+            sample_size = 3
+            final_sample = 5
+            for loss_comp in zip(components, losses):
+                param_candidates = []
+                for n in range(num_starting_points):
+                    component = loss_comp[0]["component"]
+                    loss_target = loss_comp[1]
+                    component.random_initialize_param()
+                    
+                    method = getattr(component, 'set_oracle_mode', None)
+                    if callable(method):
+                        #print("running reverse loss lookup on nn model")
+                        #print("initial loss nn model: ", component.get_local_loss())
+                        #print("target loss: ", loss_target)
+                        temp_nn_model = copy.deepcopy(component)
+                        component.descent_to_target_loss(loss_target)
+                        #print("final loss nn model: ", component.get_local_loss())
+                        temp_nn_model = copy.deepcopy(component.conv_model)
+                        param_candidates.append(temp_nn_model)
+                    else:
+                        #print("running reverse loss lookup on other models")
+                        itr = 0
+                        while itr < 500 and abs(component.get_local_loss() - loss_target) / loss_target > 1e-01: # % threshold
+                            curr_loss = component.get_local_loss()
+                            if curr_loss > loss_target:
+                                component.do_one_descent_on_local()
+                            else:
+                                component.do_one_ascent_on_local() # can replace this simply with another custom loss function
+                            next_loss = component.get_local_loss()
+                            itr+=1
+                        if abs(component.get_local_loss() - loss_target) / loss_target > 1e-01:
+                            continue
+                        if list(component.get_params()) not in param_candidates:
+                            param_candidates.append(list(component.get_params()))
+                assert len(param_candidates) > 0
+                while len(param_candidates) < sample_size:
+                    param_candidates = param_candidates + param_candidates
+                params.append(sample(param_candidates,sample_size)) # sample
+            
+            all_idx_combination = len(params) * [[x for x in range(sample_size)]]
+            all_cartesian_idx = list(itertools.product(*all_idx_combination))
+            a = len(list(all_cartesian_idx))
+            b = final_sample
+            min_to_sample = min(a, b)
+            print("number to sample from all params: ", min_to_sample)
+            all_cartesian_idx = sample(all_cartesian_idx, min_to_sample) # sample again
+            # param_configuration_to_check = sample(list(all_cartesian_idx), 20)
+            # print(param_configuration_to_check)
+            print(all_cartesian_idx)
+            
+            
+            best_system_loss = 1e50
+            best_param = None
+            candidate_loss_all = []
+            for idx in all_cartesian_idx: # iterate through randomly selected idx (3, 2, 5)
+                candidate_param = []
+                for i, cartesian_idx in enumerate(list(idx)): # i is the component index, cartesian index is which to choose
+
+                    if list(self.get_components().items())[i][1]["component"].is_nn():
+                        list(self.get_components().items())[i][1]["component"].conv_model = params[i][cartesian_idx]
+                    else:
+                        list(self.get_components().items())[i][1]["component"].set_params(params[i][cartesian_idx])
+                candidate_system_loss = self.get_system_loss()
+                candidate_loss_all.append(candidate_system_loss)
+                if candidate_system_loss < best_system_loss:
+                    best_system_loss = candidate_system_loss
+                    best_param = candidate_param
+            plt.hist(candidate_loss_all)
+            plt.show()
 
         # do gradient ascent/descent until loss is reached from current parameter configuration
         if method == "naive_climb":
@@ -191,20 +263,21 @@ class DirectedFunctionalGraph(nx.DiGraph):
                     if abs(next_loss - curr_loss) < 1e-02:
                         break
             best_param = self.get_all_params()[1]
+            self.assign_params(best_param)
 
         # initialise multiple parameter initialization and search for the best
         if method == "multi_search":
             print("loss to look for: ", losses)
             params = []
-            num_starting_points = 30
+            num_starting_points = 20
             sample_size = 5
-            final_sample = 20
+            final_sample = 10
             for loss_comp in zip(components, losses):
                 param_candidates = []
                 for n in range(num_starting_points):
                     component = loss_comp[0]["component"]
                     loss_target = loss_comp[1]
-                    component.random_initialise_params()
+                    component.random_initialize_param()
                     itr = 0
                     while itr < 500 and abs(component.get_local_loss() - loss_target) / loss_target > 1e-01: # % threshold
                         curr_loss = component.get_local_loss()
@@ -227,10 +300,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
             a = len(list(all_cartesian_idx))
             b = final_sample
             min_to_sample = min(a, b)
-            print(a)
-            print(b)
-            print(min_to_sample)
-            print("number to sample: ", min_to_sample)
+            print("number to sample from all params: ", min_to_sample)
             all_cartesian_idx = sample(all_cartesian_idx, min_to_sample) # sample again
             # param_configuration_to_check = sample(list(all_cartesian_idx), 20)
             # print(param_configuration_to_check)
@@ -239,17 +309,24 @@ class DirectedFunctionalGraph(nx.DiGraph):
             best_system_loss = 1e50
             best_param = None
             count = 0
+            candidate_loss_all = []
             for idx in all_cartesian_idx:
                 count+=1
+                print(count)
                 candidate_param = []
                 for i, cartesian_idx in enumerate(list(idx)):
                     candidate_param += params[i][cartesian_idx]
                 self.assign_params(candidate_param)
                 candidate_system_loss = self.get_system_loss()
+                candidate_loss_all.append(candidate_system_loss)
                 if candidate_system_loss < best_system_loss:
                     best_system_loss = candidate_system_loss
                     best_param = candidate_param
-            print("number of combination of params with matching loss: ", count)
+            print("number of combination of params with matching loss: ", len(all_cartesian_idx))
+            print("best loss: ", best_system_loss)
+            plt.hist(candidate_loss_all)
+            plt.show()
+            self.assign_params(best_param)
         
         if method == "block_minimization":
             params = []
@@ -259,7 +336,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                 for n in range(num_starting_points):
                     component = loss_comp[0]["component"]
                     loss_target = loss_comp[1]
-                    component.random_initialise_params()
+                    component.random_initialize_param()
                     itr = 0
                     while itr < 500 and abs(component.get_local_loss() - loss_target) / loss_target > 1e-02: # % threshold
                         curr_loss = component.get_local_loss()
@@ -291,10 +368,8 @@ class DirectedFunctionalGraph(nx.DiGraph):
                             best_system_loss = curr_loss
             best_param = self.get_all_params()[1]
             print(best_param)
-                        
-        self.assign_params(best_param)
-        norm_difference = torch.subtract(torch.tensor(self.get_local_losses()), torch.tensor(losses))
-        #print("loss difference norm after: ", torch.norm(norm_difference))
+            self.assign_params(best_param)                
+        
 
     def fit_locally_partial(self, itr=50):
         for n in self.nodes:
@@ -303,10 +378,15 @@ class DirectedFunctionalGraph(nx.DiGraph):
             for i in range(itr):
                 self.nodes[n]["component"].do_one_descent_on_local()
     
-    def random_initialize_param(self):
-        param = self.get_all_params()[1]
-        param = [np.random.uniform(-1,1) for x in param]
-        self.assign_params(param)
+    def random_initialize_param(self,seed=None):
+        for n in self.nodes:
+            if "Blackbox" in str(n) or "Dummy" in str(n):
+                continue
+            if seed is not None:
+                self.nodes[n]["component"].random_initialize_param(seed)
+            else:
+                self.nodes[n]["component"].random_initialize_param()
+            
     
     def assign_mutual_information_to_node(self, mi : dict):
         for node in mi:

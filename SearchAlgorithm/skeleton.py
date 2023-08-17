@@ -102,7 +102,14 @@ def BO_graph(system : DirectedFunctionalGraph, printout=True, iteration=50):
         # target = standardize(target)
         gp = SingleTaskGP(input_param, Y)
         mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-        fit_gpytorch_mll(mll);
+        fit_gpytorch_mll(mll)
+        # attempts = 0
+        # while attempts < 5:
+        #     try:
+        #         fit_gpytorch_mll(mll)
+        #         break
+        #     except:
+        #         attempts +=1
         UCB = UpperConfidenceBound(gp, beta=1)
 
         bounds = torch.stack([torch.ones(parameter_trials.shape[-1]) * -1, torch.ones(parameter_trials.shape[-1])])

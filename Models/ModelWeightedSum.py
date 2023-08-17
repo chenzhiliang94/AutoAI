@@ -9,4 +9,5 @@ class ModelWeightedSum(Model):
         self.set_params([theta_0_,theta_1_])
 
     def evaluate(self, x, theta_0_, theta_1_):
+        result = theta_0_ * x[0] + theta_1_ *  x[1]
         return theta_0_ * x[0] + theta_1_ *  x[1]
