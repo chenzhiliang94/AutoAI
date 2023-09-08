@@ -2,7 +2,7 @@ import torch
 from Models.Model import Model
 
 class ModelConstant(Model):
-    def __init__(self, theta_0=1, theta_1=1, lr=0.01, tol = 1e-05, dtype=torch.float64):
+    def __init__(self, theta_0=1, theta_1=1, lr=0.001, tol = 1e-05, dtype=torch.float64):
         super().__init__(lr=lr, tol=tol, dtype = dtype)
         self.set_params([theta_0, theta_1])
 

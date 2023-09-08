@@ -7,6 +7,7 @@ from Composition.SequentialSystem import SequentialSystem
 from botorch.acquisition import UpperConfidenceBound
 from SearchAlgorithm.AcquisitionFunction import *
 import numpy as np
+import time
 
 from GraphDecomposition.DirectedFunctionalGraph import *
 
@@ -68,8 +69,6 @@ def BO_skeleton(system: SequentialSystem, objective="system", model="single_task
     return parameter_trials, best_loss_tuples, best_param
 
 def BO_graph(system : DirectedFunctionalGraph, printout=True, iteration=50):
-    system.random_initialize_param()
-    system.fit_locally_partial(10)
     for node in system.nodes:
         if "Blackbox" in str(node):
             continue
@@ -82,6 +81,7 @@ def BO_graph(system : DirectedFunctionalGraph, printout=True, iteration=50):
     best_objective = -10000
     all_best_losses = []
     for i in range(iteration):
+        now = time.time()
         if printout:
             print("BO iteration: ", i)
             print("Current best objective: ", best_objective)
@@ -102,7 +102,11 @@ def BO_graph(system : DirectedFunctionalGraph, printout=True, iteration=50):
         # target = standardize(target)
         gp = SingleTaskGP(input_param, Y)
         mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-        fit_gpytorch_mll(mll)
+        try:
+            fit_gpytorch_mll(mll)
+        except:
+            print("MODEL FITTING, THROW")
+            raise Exception("model fitting error")
         # attempts = 0
         # while attempts < 5:
         #     try:
@@ -118,32 +122,39 @@ def BO_graph(system : DirectedFunctionalGraph, printout=True, iteration=50):
         )
         next_param = candidate
         input_param = torch.cat((input_param, next_param), 0)
+        later = time.time()
+        difference = (later - now)
+        print("time taken for one BO iteration: ", difference)
     return all_best_losses, input_param, best_param
 
 
-def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, method, printout=True, iteration=50):
+def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, method, samples, printout=True, iteration=50):
     all_params = []
     for node in system.nodes:
         if "Dummy" in str(node) or "Blackbox" in str(node):
             continue
-
+    
     next_param = system.get_local_losses()
     target = [[-system.get_system_loss()]]
+
     input_param = next_param
     best_param = None
     best_objective = -10000
     all_best_losses = []
     for i in range(iteration):
+        now = time.time()
         if printout:
             print("BO iteration: ", i)
             print("Current best objective: ", best_objective)
 
         ###
         # assign param which reverse maps to local loss
-        system.reverse_local_loss_lookup(next_param[0], method)
+        current_loss = - system.get_system_loss()
+        if i != 0:
+            current_loss = - system.reverse_local_loss_lookup(next_param[0], method, samples)
         ###
 
-        current_loss = - system.get_system_loss()
+        # current_loss = - system.get_system_loss()
         if current_loss > best_objective:
             best_objective = current_loss
             best_param = system.get_all_params()[1] 
@@ -161,12 +172,19 @@ def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, 
 
         gp = SingleTaskGP(input_param.double(), Y)
         mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-        fit_gpytorch_mll(mll);
+        try:
+            fit_gpytorch_mll(mll)
+        except:
+            print("MODEL FITTING, THROW")
         UCB = UpperConfidenceBound(gp, beta=0.1)
 
         candidate, acq_value = optimize_acqf(
             UCB, bounds=bounds, q=1, num_restarts=1, raw_samples=20,
         )
-        print("candidate:", candidate)
         next_param = candidate
+        if printout:
+            print("candidate param: ", next_param)
+        later = time.time()
+        difference = (later - now)
+        print("time taken for one BO iteration: ", str(difference))
     return all_best_losses, best_param

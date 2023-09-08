@@ -51,7 +51,7 @@ class MnistDataloader(object):
         x_test, y_test = self.read_images_labels(self.test_images_filepath, self.test_labels_filepath)
         return (x_train, y_train),(x_test, y_test) 
 
-def generate_data_loader(num_datapts, batch_size, label_int):
+def generate_data_loader(num_datapts, batch_size, start_idx, label_int):
     input_path = 'mnist'
     training_images_filepath = join(input_path, 'train-images-idx3-ubyte/train-images-idx3-ubyte')
     training_labels_filepath = join(input_path, 'train-labels-idx1-ubyte/train-labels-idx1-ubyte')
@@ -66,11 +66,10 @@ def generate_data_loader(num_datapts, batch_size, label_int):
     x_test = np.array(x_test)
     y_test = np.array(y_test)
     y_train = 1.0*(y_train == label_int) # mask to binary classifier
-    print(y_train)
     #local dataset # hack
     train_images_tensor = torch.tensor(x_train)/255.0
     train_labels_tensor = torch.LongTensor(y_train)
-    local_train_tensor = TensorDataset(train_images_tensor[500:500+num_datapts], train_labels_tensor[500:500+num_datapts])
+    local_train_tensor = TensorDataset(train_images_tensor[start_idx:start_idx+num_datapts], train_labels_tensor[start_idx:start_idx+num_datapts])
     system_train_tensor = TensorDataset(train_images_tensor[2000:2000+num_datapts], train_labels_tensor[2000:2000+num_datapts])
 
 

@@ -13,6 +13,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
+import numpy as np
 
 
 
@@ -57,6 +58,8 @@ class Net(nn.Module):
 class ModelMNIST(Model):
     def __init__(self, local_train_loader : DataLoader, system_train_loader : DataLoader, output_size = 10, lr=0.003, tol = 1e-05, dtype=torch.float64):
         super().__init__(lr=lr, tol=tol, dtype = dtype)
+        # if torch.cuda.is_available():
+        #     self.conv_model = Net(output_size).to("cuda:0")
         self.conv_model = Net(output_size)
         self.local_train_loader = local_train_loader
         for batch_idx, (input, target) in enumerate(local_train_loader):
@@ -75,9 +78,10 @@ class ModelMNIST(Model):
         return self.conv_model.forward(x)
 
     def evaluate(self, x):
+        device = torch.device("cpu")
         if self.oracle_mode:
             return x # input will be just the label
-        result = self.conv_model.forward(x).max(1,keepdim=False)[1]
+        result = self.conv_model.forward(x.to(device)).max(1,keepdim=False)[1]
         return result
     
     def get_params(self):
@@ -93,9 +97,9 @@ class ModelMNIST(Model):
         data, target = self.X, self.y
         data = data.unsqueeze(1)
         
-        if torch.cuda.is_available():
-            data = data.cuda()
-            target = target.cuda()
+        # if torch.cuda.is_available():
+        #     data = data.cuda()
+        #     target = target.cuda()
         
         output = self.conv_model(data)
         
@@ -113,9 +117,9 @@ class ModelMNIST(Model):
         data, target = self.X, self.y
         data = data.unsqueeze(1)
     
-        if torch.cuda.is_available():
-            data = data.cuda()
-            target = target.cuda()
+        # if torch.cuda.is_available():
+        #     data = data.cuda()
+        #     target = target.cuda()
         
         optimizer.zero_grad()
         output = self.conv_model(data)
@@ -129,27 +133,31 @@ class ModelMNIST(Model):
             cross_entropy_loss = criterion(output, target)
             return (target_loss - cross_entropy_loss)**2
         
-        optimizer = optim.Adam(params=self.conv_model.parameters(), lr=0.01)
+        optimizer = optim.Adam(params=self.conv_model.parameters(), lr=0.005)
         exp_lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=7, gamma=0.1)
         self.conv_model.train()
         exp_lr_scheduler.step()
-        for batch_idx, (data, target) in enumerate(self.local_train_loader):
-            data = data.unsqueeze(1)
-            data, target = data, target
+        data, target = self.X, self.y
+        data = data.unsqueeze(1)
+        data, target = data, target
+    
+        # if torch.cuda.is_available():
+        #     data = data.cuda()
+        #     target = target.cuda()
         
-            if torch.cuda.is_available():
-                data = data.cuda()
-                target = target.cuda()
-            
-            # number of iteration
-            for x in range(30):
-                optimizer.zero_grad()
-                output = self.conv_model(data)
-                loss = my_loss(output, target, target_loss)
-                loss.backward()
-                optimizer.step()
+        # number of iteration
+        for x in range(50):
+            optimizer.zero_grad()
+            output = self.conv_model(data)
+            loss = my_loss(output, target, target_loss)
+            loss.backward()
+            optimizer.step()
 
-    def random_initialize_param(self):
+    def random_initialize_param(self, seed=None):
+        if seed is None:
+            torch.manual_seed(np.random.randint(0,1000000))
+        else:
+            torch.manual_seed(seed)
         @torch.no_grad()
         def weight_reset(m: nn.Module):
             # - check if the current module has reset_parameters & if it's callabed called it on m

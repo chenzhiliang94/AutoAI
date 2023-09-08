@@ -71,6 +71,9 @@ class Model(nn.Module):
         input_lr = self.lr
         if lr != None:
             input_lr = lr
+        # if torch.cuda.is_available():
+        #     self.X = self.X.cuda()
+        #     self.y = self.y.cuda()
         optimizer = optim.Adam(self.params, lr=input_lr)
         optimizer.zero_grad()
         output = self(self.X, grad=True)
@@ -80,6 +83,9 @@ class Model(nn.Module):
         optimizer.step()
 
     def do_one_ascent_on_local(self):
+        # if torch.cuda.is_available():
+        #     self.X = self.X.cuda()
+        #     self.y = self.y.cuda()
         optimizer = optim.Adam(self.params, lr=self.lr)
         optimizer.zero_grad()
         output = self(self.X, grad=True)
@@ -94,6 +100,9 @@ class Model(nn.Module):
         optimizer.step()
     
     def descent_to_target_loss(self, target_loss):
+        # if torch.cuda.is_available():
+        #     self.X = self.X.cuda()
+        #     self.y = self.y.cuda()
         def my_loss(output, target, target_loss):
             criterion = nn.MSELoss()
             mse_loss = criterion(output, target)
@@ -111,7 +120,9 @@ class Model(nn.Module):
 
     def random_initialize_param(self,seed=None):
         if seed is not None:
-            np.random.seed = seed
+            np.random.seed(seed)
+        else:
+            np.random.seed(np.random.randint(0,10000))
         s = self.params
         s = np.random.uniform(-1, 1, size=len(s))
         self.set_params(list(s))
@@ -167,6 +178,8 @@ class Model(nn.Module):
         y = self.evaluate(X, *params)
         if noisy:
             noise = torch.normal(torch.full_like(y,noise_mean), torch.full_like(y,noise_std))
+            np.random.seed(None)
+            noise = np.random.normal(noise_mean, noise_std)
             if noisy_operation is None:
                 noisy_operation = self.noisy_operation
             y = noisy_operation(y, noise)
