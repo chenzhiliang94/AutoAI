@@ -71,6 +71,9 @@ class ModelMNIST(Model):
     def is_nn(self):
         return True
     
+    def nn_function(self):
+        return
+    
     def set_oracle_mode(self, bool_val):
         self.oracle_mode = bool_val
 
@@ -146,7 +149,7 @@ class ModelMNIST(Model):
         #     target = target.cuda()
         
         # number of iteration
-        for x in range(50):
+        for x in range(200):
             optimizer.zero_grad()
             output = self.conv_model(data)
             loss = my_loss(output, target, target_loss)

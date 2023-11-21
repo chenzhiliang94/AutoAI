@@ -14,6 +14,7 @@ class Model(nn.Module):
     X = None
     y = None
     lipschitz = 1
+    oracle_mode = False
     def __init__(self, inputs=1, lr=0.01, tol = 1e-05, lipschitz=1, dtype=torch.float64):
         super().__init__()
         self.inputs = inputs
@@ -124,7 +125,7 @@ class Model(nn.Module):
         else:
             np.random.seed(np.random.randint(0,10000))
         s = self.params
-        s = np.random.uniform(-1, 1, size=len(s))
+        s = np.random.uniform(-2, 2, size=len(s)).astype("float32")
         self.set_params(list(s))
     
     def set_default_param(self):

@@ -8,30 +8,28 @@ from torch.autograd import Variable
 
 import numpy as np
 
-# output between (0,1)
-class ModelLogistic(Model):
-    def __init__(self, inputs, oracle_mode=False, lr=0.1, tol = 1e-05, dtype=torch.float64):
+class ModelLinearRegression(Model):
+    def __init__(self, inputs, oracle_mode=False, lr=0.5, tol = 1e-05, dtype=torch.float64):
         self.oracle_mode = oracle_mode
         super().__init__(lr=lr, tol=tol, dtype = dtype)
         self.model = torch.nn.Linear(inputs, 1).double()
         # self.set_params([1.0]*inputs)
     
     def get_local_loss(self):
-        self.model.eval()
-        loss = 0
+        with torch.no_grad():
+            loss = 0
 
-        data, target = self.X, self.y
-        
-        # if torch.cuda.is_available():
-        #     data = data.cuda()
-        #     target = target.cuda()
-        
-        output = self.evaluate_with_existing_params(data)
-        criterion = nn.BCELoss()
-        log_loss = criterion(output, target.reshape(output.shape).double())
-        loss += log_loss
-
-        return loss
+            data, target = self.X, self.y
+            
+            # if torch.cuda.is_available():
+            #     data = data.cuda()
+            #     target = target.cuda()
+            
+            output = self.evaluate_with_existing_params(data)
+            criterion = nn.MSELoss(reduction="mean") 
+            mse_loss = criterion(output, target.reshape(output.shape).double())
+            loss += mse_loss
+            return loss
 
     def set_params(self, params):
         self.model.weight = (nn.Parameter(torch.Tensor(params).double().reshape(self.model.weight.shape)))
@@ -40,43 +38,37 @@ class ModelLogistic(Model):
         return (self.model.weight).detach().flatten().numpy()
     
     def evaluate(self, x):
-
         if self.oracle_mode:
             return x # input will be just the label
-        result = torch.sigmoid(self.model.double()(x.double()))
-
+        result = (self.model.double()(torch.Tensor(x).double()))
         return result
     
     def evaluate_with_existing_params(self, x):
         if self.oracle_mode:
             return x # input will be just the label
-        result = torch.sigmoid(self.model.double()(x.double()))
+        result = (self.model.double()(torch.Tensor(x).double()))
         return result
-    
+
     def do_one_descent_on_local(self):
-        optimizer = optim.SGD(params=self.model.parameters(), lr=0.1)
+        criteria = nn.MSELoss()
+        optimizer = optim.Adam(params=self.model.parameters(), lr=0.6)
         for x in range(10):
             optimizer.zero_grad()
+            
             data, target = self.X, self.y
             output = self.evaluate_with_existing_params(data)
-            loss = nn.BCELoss()(output, target.reshape(output.shape).double())
+            loss = criteria(output, target.reshape(output.shape).double())
             loss.backward()
             optimizer.step()
-    
-    def accuracy(self):
-        with torch.no_grad():
-            correct = np.sum(torch.squeeze(self.evaluate_with_existing_params(self.X)).round().detach().numpy() == self.y.detach().numpy())
-            accuracy = 100 * correct/len(self.y)
-        return accuracy
-    
+        
     def do_one_ascent_on_local(self):
+        optimizer = optim.SGD(params=self.model.parameters(), lr=0.5)
         def my_loss(output, target):
-            loss =nn.BCELoss()(output, target)
+            loss = nn.MSELoss()(output, target)
             return - loss
-    
-        optimizer = optim.SGD(params=self.model.parameters(), lr=0.1)
         for x in range(10):
             optimizer.zero_grad()
+            
             data, target = self.X, self.y
             output = self.evaluate_with_existing_params(data)
             loss = my_loss(output, target.reshape(output.shape).double())
@@ -85,11 +77,11 @@ class ModelLogistic(Model):
                 
     def descent_to_target_loss(self, target_loss):
         def my_loss(output, target, target_loss):
-            criterion = nn.BCELoss()
-            cross_entropy_loss = criterion(output, target.reshape(output.shape).double())
-            return (target_loss - cross_entropy_loss)**2
+            criterion = nn.MSELoss()
+            mse_loss = criterion(output, target.reshape(output.shape))
+            return (target_loss - mse_loss)**2
         
-        optimizer = optim.Adam(params=self.model.parameters(), lr=0.1)
+        optimizer = optim.SGD(params=self.model.parameters(), lr=0.3)
         data, target = self.X, self.y
     
         # if torch.cuda.is_available():
@@ -113,6 +105,6 @@ class ModelLogistic(Model):
         else:
             np.random.seed(np.random.randint(0,10000))
         s = self.model.weight
-        s = np.random.uniform(-1,1,size=s.data.shape)
-        self.model.weight = (nn.Parameter(torch.from_numpy(s)))
+        s = np.random.uniform(-1,1,size=s.data.shape).astype("float32")
+        self.model.weight = (nn.Parameter(torch.Tensor(s)))
         

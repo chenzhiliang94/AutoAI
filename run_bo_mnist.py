@@ -31,7 +31,11 @@ from helper import *
 import time
 
 ground_truth_param_mnist = {"Blackbox7": np.array([0.3,0.45]), 6 : np.array([0.7, 0.9, -0.5]), 2: np.array([0.5, -.7]), 12: np.array([0.1, 0.1]), "Blackbox3":np.array([1.2, 0.8]), 4:np.array([-0.3, 0.5])}
-ground_truth_param_mnist = {"Blackbox7": np.array([0.8,0.8]), 6 : np.array([0.7, 0.9, 0.5]), 2: np.array([0.5, 0.7]), 12: np.array([0.1, 0.1]), "Blackbox3":np.array([1.2, 0.8]), 4:np.array([-0.3, 0.5])}
+ground_truth_param_mnist = {"Blackbox7": np.array([0.8,0.8]), 6 : np.array([0.7, 0.9]), 2: np.array([0.5, 0.7]), 12: np.array([0.5, 0.5]), "Blackbox3":np.array([1.2, 0.8]), 4:np.array([-0.3, 0.5]),
+                            8 : np.array([0.7, 0.9]), 9 : np.array([-0.7, 0.9]), 10 : np.array([0.7, 0.9]), 11 : np.array([-0.4, 0.8]), 12 : np.array([-0.4, 0.8, 0.1]), 13 : np.array([-0.4, 0.8, 0.1]), 14:np.array([0.5, 0.8])}
+
+ground_truth_param_mnist_original = {"Blackbox7": np.array([0.8,0.8]), 6 : np.array([0.7, 0.9, -0.3]), 2: np.array([0.5, 0.7]), 12: np.array([0.5, 0.5]), "Blackbox3":np.array([1.2, 0.8]), 4:np.array([-0.3, 0.5]),
+                            8 : np.array([0.7, 0.9]), 9 : np.array([-0.7, 0.9]), 10 : np.array([0.7, 0.9]), 11 : np.array([-0.4, 0.8]), 12 : np.array([-0.4, 0.8, 0.1]), 13 : np.array([-0.4, 0.8, 0.1]), 14:np.array([0.5, 0.8])}
 
 # gradient_system_losses_trials = []
 # ours_bo_system_losses_trials = []
@@ -73,22 +77,26 @@ ground_truth_param_mnist = {"Blackbox7": np.array([0.8,0.8]), 6 : np.array([0.7,
 # np.savetxt("mnist_gradient.csv", gradient_system_losses_trials)
 # np.savetxt("mnist_ours_20_iterations.csv", ours_bo_system_losses_trials)
 data_generation_seed = 99
-dg_nn = create_mnist_system(ground_truth_param_mnist,  noise=0.8, seed=data_generation_seed)
+perturbation_noise = 0.3
+noise_std = 0.2
+dg_nn = create_mnist_system(ground_truth_param_mnist,  noise=perturbation_noise, seed=data_generation_seed)
+dg_nn.noise_std = noise_std
+dg_nn.to_perturb = True
 nx.draw_networkx(dg_nn)
 
-our_bo_trial = 5
+our_bo_trial = 4
 ours_bo_bound_size = 5
-our_bo_iterations = 10
-our_bo_samples = [10]
-our_bo_output_dir = "result/mnist_bo_10_800_99_new"
+our_bo_iterations = 20
+our_bo_samples = [1,2,5,10,20]
+our_bo_output_dir = "result/large_mnist_our_BO_data_seed_99_starting_grad_seed_5_noise_pos_0.3_std_0.2"
 our_bo_search_method = "nn_lookup"
 
-vanilla_bo_trials = 5
+vanilla_bo_trials = 4
 vanilla_bo_iterations = 100
-vanilla_bo_output_dir = "result/mnist_vanilla_100_800_99_new.csv"
+vanilla_bo_output_dir = "result/large_mnist_vanilla_BO_data_seed_99_starting_grad_seed_5_noise_pos_0.3_std_0.2.csv"
     
 
-seed = 800
+seed = 5
 seeds = [seed]
 
 gradient_system_losses_trials = []
@@ -97,20 +105,19 @@ for s in seeds:
     now = time.time()
     print("doing grad descent")
     dg_nn.random_initialize_param(s)
-    lower_bound_local_loss, all_loss = show_system_loss_from_grad_descent(dg_nn, itr=300, plot=False)
+    lower_bound_local_loss, all_loss = show_system_loss_from_grad_descent(dg_nn, itr=30, plot=False)
     lower_bound_local_loss = [x.detach().cpu().numpy() for x in lower_bound_local_loss]
     gradient_system_losses_trials.append(min(all_loss["system"]))
     later = time.time()
     print("time taken: ", later - now)
 
-np.savetxt("result/mnist_gradient.csv", gradient_system_losses_trials)
+np.savetxt("result/large_mnist_gradient.csv", gradient_system_losses_trials)
 
-# vanilla BO - but ignore nn components
+# # # vanilla BO - but ignore nn components
 
 vanilla_all_trials = []
 
-trials = 100
-seeds = []    
+trials = 100  
 for x in range(trials):
     print("trial of vanilla BO: ", x)
     r1 = seed
@@ -118,10 +125,10 @@ for x in range(trials):
         break
     try:
         dg_nn.random_initialize_param(r1)
-        if (dg_nn.get_system_loss() > 120):
-            print(dg_nn.get_system_loss(), ": seed is bad")
-            continue
-        for x in range(200):
+        # if (dg_nn.get_system_loss() > 120):
+        #     print(dg_nn.get_system_loss(), ": seed is bad")
+        #     continue
+        for x in range(100):
             dg_nn.nodes["nn_1"]["component"].do_one_descent_on_local()
             dg_nn.nodes["nn_5"]["component"].do_one_descent_on_local()
         
@@ -134,6 +141,5 @@ for x in range(trials):
 
 vanilla_all_trials = np.array(vanilla_all_trials)
 np.savetxt(vanilla_bo_output_dir, vanilla_all_trials)
-    
 
 run_our_bo(dg_nn, lower_bound_local_loss, seeds,  our_bo_trial, ours_bo_bound_size, our_bo_iterations, our_bo_samples, our_bo_output_dir, our_bo_search_method)
