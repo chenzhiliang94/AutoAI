@@ -7,4 +7,4 @@ class ModelExponential(Model):
         self.set_params([theta_0_,theta_1_])
 
     def evaluate(self, x, theta_0_, theta_1_):
-        return theta_0_ * torch.exp(-theta_1_ * x)
+        return theta_0_ * torch.exp(-theta_1_* x)

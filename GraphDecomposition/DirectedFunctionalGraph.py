@@ -14,6 +14,7 @@ from Models.ModelConstant import ModelConstant
 
 class DirectedFunctionalGraph(nx.DiGraph):
     noise = 0.1
+    noise_std = 0.05
     system_x = None
     system_y = None
     to_perturb = True
@@ -66,7 +67,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                 if "Blackbox" in str(node):
                     if perturbed_black_box:
                         return component(x,noisy=True, noise_mean=self.noise)
-                    return component(x,noisy=True, noise_mean=self.noise)
+                    return component(x,noisy=False)
                 return component(x,noisy=False)
             
             assert "parents" in self.nodes[node]
@@ -80,9 +81,9 @@ class DirectedFunctionalGraph(nx.DiGraph):
                     return component(input,noisy=False)
             if "Blackbox" in str(node):
                 if perturbed_black_box:
-                    return component(input,noisy=True, noise_mean=self.noise)
-                return component(input,noisy=True, noise_mean=self.noise)
-            return component(input, noisy=True)
+                    return component(input,noisy=True, noise_mean=self.noise, noise_std=self.noise_std)
+                return component(input,noisy=True, noise_std=self.noise_std)
+            return component(input, noisy=True, noise_std=self.noise_std)
         return backward_(sink)
     
     def generate_sub_system(self, node_set : set):
@@ -131,6 +132,11 @@ class DirectedFunctionalGraph(nx.DiGraph):
     def get_system_loss(self):
         return self.get_system_loss_with_inputs(self.system_x, self.system_y)
 
+    def get_system_loss_with_params(self, param):
+        print(param)
+        self.assign_params(param)
+        return self.get_system_loss()
+    
     def get_local_losses(self):
         losses = []
         for n in self.nodes:
@@ -171,14 +177,14 @@ class DirectedFunctionalGraph(nx.DiGraph):
             params = params[num_param_to_assign:]
 
     # look for parameters which yield the input losses
-    def reverse_local_loss_lookup(self, losses, method, samples):
+    def reverse_local_loss_lookup(self, losses, method, samples, percentage_threshold_for_terminate_search=1e-01, to_plot=True, num_starting_points=5, ignore_failure=False):
         components = self.get_components().values()
         assert len(components) == len(losses), "loss input size should be equals to number of components!"
 
         if method == "nn_lookup":
             params = []
-            num_starting_points = 3
-            sample_size = 3
+            num_starting_points = num_starting_points
+            sample_size = num_starting_points
             final_sample = samples
             timeA = time.time()
             for loss_comp in zip(components, losses):
@@ -187,9 +193,15 @@ class DirectedFunctionalGraph(nx.DiGraph):
                     component = loss_comp[0]["component"]
                     loss_target = loss_comp[1]
                     
+                    re_initialise_count = 0
                     component.random_initialize_param()
+                    while component.get_local_loss() > 100:
+                        re_initialise_count +=1
+                        component.random_initialize_param()
+                        if re_initialise_count > 30:
+                            break
                     
-                    method = getattr(component, 'set_oracle_mode', None)
+                    method = getattr(component, 'nn_function', None)
                     if callable(method):
                         temp_nn_model = copy.deepcopy(component)
                         component.descent_to_target_loss(loss_target)
@@ -200,7 +212,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                         l = []
                         #print("running reverse loss lookup on other models")
                         itr = 0
-                        while itr < 500 and abs(component.get_local_loss() - loss_target) / loss_target > 1e-01: # % threshold
+                        while abs(component.get_local_loss() - loss_target) / loss_target > percentage_threshold_for_terminate_search: # threshold
                             curr_loss = component.get_local_loss()
                             l.append(curr_loss)
                             if curr_loss > loss_target:
@@ -208,8 +220,11 @@ class DirectedFunctionalGraph(nx.DiGraph):
                             else:
                                 component.do_one_ascent_on_local() # can replace this simply with another custom loss function
                             itr+=1
-                        # if abs(component.get_local_loss() - loss_target) / loss_target > 3e-01:
-                        #     continue
+                            if itr > 1000:
+                                break
+                        if not ignore_failure:
+                            if abs(component.get_local_loss() - loss_target) / loss_target > 3e-01 and abs(component.get_local_loss() - loss_target) > 0.01:
+                                continue
                         if list(component.get_params()) not in param_candidates:
                             param_candidates.append(list(component.get_params()))
                 if len(param_candidates) == 0:
@@ -236,6 +251,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
             best_system_loss = 1e50
             best_param = None
             candidate_loss_all = []
+            print(len(all_cartesian_idx))
             for idx in all_cartesian_idx: # iterate through randomly selected idx (3, 2, 5)
                 candidate_param = []
                 for i, cartesian_idx in enumerate(list(idx)): # i is the component index, cartesian index is which to choose
@@ -250,6 +266,13 @@ class DirectedFunctionalGraph(nx.DiGraph):
                     best_system_loss = candidate_system_loss
                     best_param = candidate_param
             
+            if to_plot:
+                plt.hist(candidate_loss_all, bins=samples)
+                plt.show()
+
+            
+
+
             timeC = time.time()
             print("number of system calls: ", final_sample)
             print("time taken for system evaluation: ", timeC-timeB)
@@ -263,7 +286,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                 loss_target = loss_comp[1]
 
                 itr = 0
-                while itr < 1000 and abs(component.get_local_loss() - loss_target) / loss_target > 1e-02: # % threshold
+                while itr < 1000 and abs(component.get_local_loss() - loss_target) / loss_target > percentage_threshold_for_terminate_search: # % threshold
                     curr_loss = component.get_local_loss()
                     if curr_loss > loss_target:
                         component.do_one_descent_on_local()
@@ -281,7 +304,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
         if method == "multi_search":
             #print("loss to look for: ", losses)
             params = []
-            num_starting_points = 10
+            num_starting_points = num_starting_points
             sample_size = 3
             final_sample = samples
             timeA = time.time()
@@ -294,17 +317,20 @@ class DirectedFunctionalGraph(nx.DiGraph):
                     component.random_initialize_param()
                     itr = 0
                     l = []
-                    while itr < 1000 and abs(component.get_local_loss() - loss_target) / loss_target > 1e-01: # % threshold
+                    while abs(component.get_local_loss() - loss_target) / loss_target > percentage_threshold_for_terminate_search: # % threshold
                         curr_loss = component.get_local_loss()
                         l.append(curr_loss)
                         if curr_loss > loss_target:
                             component.do_one_descent_on_local()
                         else:
                             component.do_one_ascent_on_local() # can replace this simply with another custom loss function
-                        next_loss = component.get_local_loss()
                         itr+=1
-                    if abs(component.get_local_loss() - loss_target) / loss_target > 1e-01:
-                        continue
+                        if itr > 1000:
+                            break
+                    if not ignore_failure:
+                        if abs(component.get_local_loss() - loss_target) / loss_target > 3e-01 and abs(component.get_local_loss() - loss_target) > 0.01:
+                            continue
+
                     if list(component.get_params()) not in param_candidates:
                         param_candidates.append(list(component.get_params()))
                         done += 1
@@ -350,8 +376,9 @@ class DirectedFunctionalGraph(nx.DiGraph):
             print("number of system calls: ", final_sample)
             print("time taken for system evaluation: ", timeC-timeB)
             print("best loss: ", best_system_loss)
-            #plt.hist(candidate_loss_all)
-            #plt.show()
+            if to_plot:
+                plt.hist(candidate_loss_all, bins=samples)
+                plt.show()
             self.assign_params(best_param)
             return best_system_loss
         
