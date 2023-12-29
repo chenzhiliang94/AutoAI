@@ -220,10 +220,10 @@ class DirectedFunctionalGraph(nx.DiGraph):
                             else:
                                 component.do_one_ascent_on_local() # can replace this simply with another custom loss function
                             itr+=1
-                            if itr > 1000:
+                            if itr > 2000:
                                 break
                         if not ignore_failure:
-                            if abs(component.get_local_loss() - loss_target) / loss_target > 3e-01 and abs(component.get_local_loss() - loss_target) > 0.01:
+                            if abs(component.get_local_loss() - loss_target) / loss_target > 1e-01 and abs(component.get_local_loss() - loss_target) > 0.01:
                                 continue
                         if list(component.get_params()) not in param_candidates:
                             param_candidates.append(list(component.get_params()))
@@ -267,7 +267,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                     best_param = candidate_param
             
             if to_plot:
-                plt.hist(candidate_loss_all, bins=samples)
+                plt.hist(candidate_loss_all, bins=20)
                 plt.show()
 
             
@@ -325,7 +325,7 @@ class DirectedFunctionalGraph(nx.DiGraph):
                         else:
                             component.do_one_ascent_on_local() # can replace this simply with another custom loss function
                         itr+=1
-                        if itr > 1000:
+                        if itr > 2000:
                             break
                     if not ignore_failure:
                         if abs(component.get_local_loss() - loss_target) / loss_target > 3e-01 and abs(component.get_local_loss() - loss_target) > 0.01:
@@ -377,7 +377,9 @@ class DirectedFunctionalGraph(nx.DiGraph):
             print("time taken for system evaluation: ", timeC-timeB)
             print("best loss: ", best_system_loss)
             if to_plot:
-                plt.hist(candidate_loss_all, bins=samples)
+                plt.hist(candidate_loss_all, bins=20)
+                plt.xlabel("system loss")
+                plt.ylabel("count")
                 plt.show()
             self.assign_params(best_param)
             return best_system_loss

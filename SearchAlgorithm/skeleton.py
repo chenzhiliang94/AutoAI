@@ -268,7 +268,7 @@ def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, 
     print(fitting_error_count)
     return all_best_losses, best_param
 
-def BO_graph_local_loss_with_explicit_noise(system : DirectedFunctionalGraph, bounds: torch.tensor, method, samples, num_starting_points = 5, printout=True, iteration=50):
+def BO_graph_local_loss_with_explicit_noise(system : DirectedFunctionalGraph, bounds: torch.tensor, method, samples, num_starting_points = 10, printout=True, iteration=50):
     all_params = []
     for node in system.nodes:
         if "Dummy" in str(node) or "Blackbox" in str(node):
