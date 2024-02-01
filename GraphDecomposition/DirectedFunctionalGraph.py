@@ -244,9 +244,6 @@ class DirectedFunctionalGraph(nx.DiGraph):
             b = final_sample
             min_to_sample = min(a, b)
             all_cartesian_idx = sample(all_cartesian_idx, min_to_sample) # sample again
-            # param_configuration_to_check = sample(list(all_cartesian_idx), 20)
-            # print(param_configuration_to_check)
-            
             
             best_system_loss = 1e50
             best_param = None
@@ -268,6 +265,8 @@ class DirectedFunctionalGraph(nx.DiGraph):
             
             if to_plot:
                 plt.hist(candidate_loss_all, bins=20)
+                plt.xlabel("Sampled system loss")
+                plt.ylabel("Frequency")
                 plt.show()
 
             
@@ -377,9 +376,10 @@ class DirectedFunctionalGraph(nx.DiGraph):
             print("time taken for system evaluation: ", timeC-timeB)
             print("best loss: ", best_system_loss)
             if to_plot:
+                candidate_loss_all = [x for x in candidate_loss_all if x < 1]
                 plt.hist(candidate_loss_all, bins=20)
-                plt.xlabel("system loss")
-                plt.ylabel("count")
+                plt.xlabel("Sampled system loss")
+                plt.ylabel("Frequency")
                 plt.show()
             self.assign_params(best_param)
             return best_system_loss

@@ -11,7 +11,7 @@ def HeatMapLossFunction(X_local, y_local, X_global, z_global, f, g, plt, noise_m
     Assumes a composite function f.g only
     '''
     grid_size = 50
-    theta_0_range, theta_1_range = np.meshgrid(np.linspace(0, 1, grid_size), np.linspace(0, 1, grid_size))
+    theta_0_range, theta_1_range = np.meshgrid(np.linspace(0, 1, grid_size), np.linspace(0.4, 0.7, grid_size))
     local_loss = []
     global_loss = []
     global_pertube_loss = []
@@ -49,7 +49,7 @@ def HeatMapLossFunction(X_local, y_local, X_global, z_global, f, g, plt, noise_m
         ax[0].set_title('local loss')
         # set the limits of the plot to the limits of the data
         ax[0].axis([theta_0_range.min(), theta_0_range.max(), theta_1_range.min(), theta_1_range.max()])
-        ax[0].scatter([best_local[0]], [best_local[1]], marker='x', s=12,linewidths=4, color="yellow")
+        ax[0].scatter([best_local[0]], [best_local[1]], marker='x', s=12,linewidths=4, color="red")
         ax[0].scatter([best_global[0]], [best_global[1]], marker='x', s=12,linewidths=4, color="green")
         #fig.colorbar(c, ax=ax[0])
 
@@ -59,7 +59,7 @@ def HeatMapLossFunction(X_local, y_local, X_global, z_global, f, g, plt, noise_m
         # set the limits of the plot to the limits of the data
         ax[1].axis([theta_0_range.min(), theta_0_range.max(), theta_1_range.min(), theta_1_range.max()])
         ax[1].scatter([best_global[0]], [best_global[1]], marker='x', s=12,linewidths=4, color="green", label="system minimum")
-        ax[1].scatter([best_local[0]], [best_local[1]], marker='x', s=12,linewidths=4, color="yellow", label="local minimum")
+        ax[1].scatter([best_local[0]], [best_local[1]], marker='x', s=12,linewidths=4, color="red", label="local minimum")
         #fig.colorbar(c, ax=ax[1])
 
         # global_pertube_loss = np.array(global_pertube_loss).reshape(theta_0_range.shape)
@@ -75,10 +75,11 @@ def HeatMapLossFunction(X_local, y_local, X_global, z_global, f, g, plt, noise_m
         for theta_0, theta_1 in zip(theta_0_range.flatten(), theta_1_range.flatten()):
             y_pred = g(X_local, params=[theta_0, theta_1], noisy=False)
             local_loss_curr = mean_squared_error(y_pred, y_local)
-            if (abs(local_loss_curr - local_loss_found))/local_loss_found < 0.05:
+            if (abs(local_loss_curr - local_loss_found))/local_loss_found < 0.3:
                 theta_0_found.append(theta_0)
                 theta_1_found.append(theta_1)
-        ax[0].scatter(theta_0_found, theta_1_found, marker='s', s=3,linewidths=4, color="limegreen", label="target region")
-        
+        ax[0].scatter(theta_0_found, theta_1_found, marker='s', s=3,linewidths=4, color="gold", label="target region")
+        ax[0].set_box_aspect(1)
+        ax[1].set_box_aspect(1)
         plt.legend(fontsize=10)
         return plt, fig, ax

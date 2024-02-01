@@ -224,9 +224,8 @@ def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, 
         # assign param which reverse maps to local loss
         current_loss = - system.get_system_loss()
         if i != 0:
-            current_loss = - system.reverse_local_loss_lookup(next_param[0], method, samples, to_plot=printout, num_starting_points=num_starting_points, ignore_failure=ignore_error)
+            current_loss  = -system.reverse_local_loss_lookup(next_param[0], method, samples, to_plot=printout, num_starting_points=num_starting_points, ignore_failure=ignore_error)
         ###
-
         # current_loss = - system.get_system_loss()
         if current_loss > best_objective:
             best_objective = current_loss
@@ -266,7 +265,7 @@ def BO_graph_local_loss(system : DirectedFunctionalGraph, bounds: torch.tensor, 
         difference = (later - now)
         print("time taken for one BO iteration: ", str(difference))
     print(fitting_error_count)
-    return all_best_losses, best_param
+    return all_best_losses, best_param, candidate_loss_all
 
 def BO_graph_local_loss_with_explicit_noise(system : DirectedFunctionalGraph, bounds: torch.tensor, method, samples, num_starting_points = 10, printout=True, iteration=50):
     all_params = []

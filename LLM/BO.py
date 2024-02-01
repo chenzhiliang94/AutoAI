@@ -7,11 +7,10 @@ from SearchAlgorithm.AcquisitionFunction import *
 from SearchAlgorithm.turbo import *
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-openai.api_key = "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"
 id2label = {0: "NEGATIVE", 1: "POSITIVE"}
 label2id = {"NEGATIVE": 0, "POSITIVE": 1} 
 
-def run_BO_GP_UCB(BO_iterations, trials, subtasks):
+def run_BO_GP_UCB(BO_iterations, trials, subtasks, contamination_rate):
     
     trial_accuracy = []
     for trial in range(trials): 
@@ -36,7 +35,7 @@ def run_BO_GP_UCB(BO_iterations, trials, subtasks):
                 input = x[1536:].reshape([2,768])
                 dict(model_prompt_picker.named_parameters())["classifier.weight"].data.copy_(input)
             
-            accuracy = get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, subtasks)
+            accuracy = get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, subtasks, contamination_rate)
             
             current_accuracy = sum(accuracy.values())/len(accuracy.values())
             best_accuracy = max(best_accuracy, current_accuracy)
@@ -54,13 +53,14 @@ def run_BO_GP_UCB(BO_iterations, trials, subtasks):
             x = candidate[0] # size 2 * 2 * 768
             end = time.time()
             print("time taken for one BO iteration: ", end-start)
+            print("current best accuracy: ", best_accuracy)
         print("all best accuracy:", all_best_accuracy)
         trial_accuracy.append(all_best_accuracy)
     
     result = np.array(trial_accuracy)
     return result
 
-def get_accuracy(x, model_example_picker, model_prompt_picker, sub_tasks):
+def get_accuracy(x, model_example_picker, model_prompt_picker, sub_tasks, contamination_rate):
     # replace with last layer weight copy with BO
     with torch.no_grad():
         input = x[:1536].reshape([2,768])
@@ -68,11 +68,11 @@ def get_accuracy(x, model_example_picker, model_prompt_picker, sub_tasks):
         input = x[1536:].reshape([2,768])
         dict(model_prompt_picker.named_parameters())["classifier.weight"].data.copy_(input)
     
-    accuracy =  get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, sub_tasks)
+    accuracy =  get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, sub_tasks, contamination_rate)
     acc = sum(accuracy.values())/len(accuracy.values())
     return acc
 
-def llm_turbo(sub_tasks, to_normalize_y=True, total_trials=3, iterations=50, batch_size=1):
+def llm_turbo(sub_tasks, contamination_rate, to_normalize_y=True, total_trials=3, iterations=50, batch_size=1):
     trial_acc=[]
     for trials in range(total_trials): 
         model_example_picker = AutoModelForSequenceClassification.from_pretrained(
@@ -88,7 +88,7 @@ def llm_turbo(sub_tasks, to_normalize_y=True, total_trials=3, iterations=50, bat
         x = torch.ones([dim])
         X_turbo = torch.tensor(x, dtype=torch.double).unsqueeze(0)
         Y_turbo = torch.tensor(
-        [get_accuracy(x, model_example_picker, model_prompt_picker, sub_tasks) for x in X_turbo], dtype=torch.double, device="cpu").unsqueeze(-1)
+        [get_accuracy(x, model_example_picker, model_prompt_picker, sub_tasks, contamination_rate) for x in X_turbo], dtype=torch.double, device="cpu").unsqueeze(-1)
         state = TurboState(dim, batch_size=batch_size)
 
         while not state.restart_triggered:  # Run until TuRBO converges
@@ -133,7 +133,7 @@ def llm_turbo(sub_tasks, to_normalize_y=True, total_trials=3, iterations=50, bat
                 )
             bounds = torch.stack([torch.ones(dim) * -1, 1 * torch.ones(dim)])
             Y_next = torch.tensor(
-                [ get_accuracy(unnormalize(x, bounds), model_example_picker, model_prompt_picker, sub_tasks) for x in X_next],device="cpu"
+                [ get_accuracy(unnormalize(x, bounds), model_example_picker, model_prompt_picker, sub_tasks, contamination_rate) for x in X_next],device="cpu"
             ).unsqueeze(-1)
             
             # Update state
@@ -147,18 +147,21 @@ def llm_turbo(sub_tasks, to_normalize_y=True, total_trials=3, iterations=50, bat
             print(
                 f"{len(X_turbo)}) Best value: {state.best_value:.2e}, TR length: {state.length:.2e}"
             )
+            print("all y (including 1st iteration): ", Y_turbo)
+            print("all best acc: ", all_best_accuracy)
             for x in range(batch_size):
                 all_best_accuracy.append(state.best_value)
-            
+            print("is restart triggered: ", state.restart_triggered)
             if len(all_best_accuracy) >= iterations:
+                print("breaking because iteration reached.")
+                print(iterations)
                 break
     trial_acc.append(all_best_accuracy)
     return trial_acc
 
 def llm_abollo(sub_tasks, bounds = torch.stack([torch.ones(2) * 0.01, torch.ones(2) * 0.1]),
-                    down_sample_size = 0.05, BO_iteration=10, trials=3, to_use_specific_model = False, sample_size = 1, epochs = 10):
+                    down_sample_size = 0.05, BO_iteration=10, trials=3, to_use_specific_model = False, sample_size = 1, epochs = 10, contamination_rate=0.9):
     
-    openai.api_key = "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"
     trials_best_accuracy = []
     for trial in range(trials):
         target_loss = [0.5, 0.5]
@@ -175,7 +178,7 @@ def llm_abollo(sub_tasks, bounds = torch.stack([torch.ones(2) * 0.01, torch.ones
             for k in range(sample_size):
                 model_example_picker = train_model(model_to_train_on, "example_picker", target_loss[0], epochs=epochs, to_down_sample=True, down_sample_size=down_sample_size)
                 model_prompt_picker = train_model(model_to_train_on, "prompt_picker", target_loss[1], epochs=epochs, to_down_sample=True, down_sample_size=down_sample_size)
-                accuracy = get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, sub_tasks)
+                accuracy = get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, sub_tasks, contamination_rate=contamination_rate)
                 acc_sampled = sum(accuracy.values())/len(accuracy.values())
                 print("accuracy in each sample k: ", acc_sampled)
                 overall_accuracy = max(overall_accuracy, acc_sampled)

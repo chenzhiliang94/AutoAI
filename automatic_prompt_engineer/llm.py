@@ -159,8 +159,7 @@ class GPT_Forward(LLM):
         while response is None:
             try:
                 
-                client = openai.OpenAI(api_key="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")
-                #client.api_key = "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"
+                client = openai.OpenAI(api_key="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")
                 
                 for p in prompt:
                     response = client.chat.completions.create(
@@ -222,7 +221,7 @@ class GPT_Forward(LLM):
         response = None
         while response is None:
             try:
-                openai.OpenAI().api_key = "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"
+                openai.OpenAI().api_key = ""
                 response = openai.Completion.create(
                     **config, prompt=text)
             except Exception as e:

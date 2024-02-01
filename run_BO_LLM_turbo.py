@@ -11,17 +11,16 @@ from SearchAlgorithm.turbo import *
 
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
-openai.api_key = "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"
+#openai.api_key = ""
 
-sub_tasks = ['negation', 'num_to_verbal',
+sub_tasks = ['antonyms', 'diff', 'first_word_letter',
+             'informal_to_formal', 'larger_animal', 'letters_list', 'taxonomy_animal', 'negation', 'num_to_verbal',
              'active_to_passive', 'singular_to_plural', 'rhymes',
              'second_word_letter', 'sentence_similarity', 'sentiment', 'orthography_starts_with',
              'sum', 'synonyms', 'translation_en-de', 'translation_en-es',
              'translation_en-fr', 'word_in_context']
-sub_tasks = ['negation']
 
-
-bo_all_trials = llm_turbo(sub_tasks, to_normalize_y=True, total_trials=1, iterations=1)
+bo_all_trials = llm_turbo(sub_tasks, contamination_rate=0.5, to_normalize_y=True, total_trials=2, iterations=50, batch_size=1)
 
 # need to make sure each trial has same number of iterations
 max_len = max([len(x) for x in bo_all_trials])

@@ -461,7 +461,7 @@ def show_system_loss_from_grad_descent(DG, itr=500, y_min=0.0, y_max=1.0, plot=F
         plt.ylim(y_min,y_max)
         plt.ylabel("loss")
         plt.xlabel("GD iterations")
-        plt.title("component and system loss with local gradient descent")
+        #plt.title("component and system loss with local gradient descent")
         plt.show()
     return last_loss, losses
 

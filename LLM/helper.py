@@ -91,22 +91,32 @@ def train_all(data, model_output_name, epochs=3, target_loss=0.0):
     return model
 
 from random_word import RandomWords
-def modelA_pick_examples(q, a, model):
+def modelA_pick_examples(q, a, model, contamination_rate=0.9):
     r = RandomWords()
+    print("picking examples")
+    contaminated_q = []
     def combine(q, a):
         examples = []
         
         for x,y in zip(q,a):
             # contaminate the example at 90% chance
             random_int = np.random.uniform()
-            if random_int < 0.9:
+            #print(random_int)
+            if random_int < contamination_rate:
                 examples.append(str(str(r.get_random_word()) + " " + str(r.get_random_word()) + ". " + y))
+                random_q = str(str(r.get_random_word()) + " " + str(r.get_random_word()))
+                #print(random_q)
+                contaminated_q.append(random_q)
+                
             else:
                 examples.append(str(x + ". " + y))
+                contaminated_q.append(x)
+            #print(contaminated_q)
         return examples
 
     data = combine(q, a)
     print("loading tokenizer")
+    print("contamined q: ", contaminated_q)
     tokenizer = AutoTokenizer.from_pretrained("distilbert-base-uncased")
 
     output_q = []
@@ -119,8 +129,10 @@ def modelA_pick_examples(q, a, model):
             logits = model(**inputs).logits
             predicted_class_id = logits.argmax().item()
         if (predicted_class_id):
-            output_q.append(q[idx])
+            print("adding contaminated q")
+            output_q.append(contaminated_q[idx])
             output_a.append(a[idx])
+    #print(output_q)
     return output_q, output_a
 
 def modelB_pick_prompts(q_filtered, a_filtered, prompts_generated, model):
@@ -136,6 +148,8 @@ def modelB_pick_prompts(q_filtered, a_filtered, prompts_generated, model):
 
     prompt_scores = []
     for idx, prompt in enumerate(prompts_generated):
+        if len(prompt) > 512:
+            prompt = prompt[:511]
         prompt_score_on_examples = 0
         for idx, example in enumerate(examples):
             inputs = tokenizer(example + ". " + prompt, return_tensors="pt").to("cuda")
@@ -274,7 +288,7 @@ def get_eval_data(task_name):
         a = json.load(fp)
     return q,a
 
-def get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, sub_tasks):
+def get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, sub_tasks, contamination_rate=0.5):
     accuracy = {}
     for task in sub_tasks:
         print("task: ", task)
@@ -283,13 +297,13 @@ def get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, sub
         # deploy model A : classify each example and get a score, get top k example
         #q_filtered, a_filtered = modelA_pick_examples(q_eval,a_eval, model = AutoModelForSequenceClassification.from_pretrained("./example_picker_" + task + "/", local_files_only=True))
         print("number of queries before filtering: ", len(q_eval))
-        q_filtered, a_filtered = modelA_pick_examples(q_eval,a_eval, model = model_example_picker)
+        q_filtered, a_filtered = modelA_pick_examples(q_eval,a_eval, model = model_example_picker, contamination_rate=contamination_rate)
         print("number of queries after filtering: ", len(q_filtered))
         if len(q_filtered) == 0:
             r = RandomWords()
             random_int = np.random.uniform()
             random_idx = random.choice(range(len(q_eval)))
-            if random_int < 0.9:
+            if contamination_rate < 0.9:
                 q_filtered = [str(str(r.get_random_word()) + " " + str(r.get_random_word()))]
             else:
                 q_filtered = [q_eval[random_idx]]
@@ -316,7 +330,6 @@ def get_accuracy_for_each_subtask(model_example_picker, model_prompt_picker, sub
 def llm_prompt_task_contaminate(sub_tasks, bounds = torch.stack([torch.ones(2) * 0.01, torch.ones(2) * 0.1]),
                     down_sample_size = 0.05, BO_iteration=10, trials=3, to_use_specific_model = False, sample_size = 1, epochs = 10):
     
-    openai.api_key = "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"
     trials_best_accuracy = []
     for trial in range(trials):
         target_loss = [0.5, 0.5]
