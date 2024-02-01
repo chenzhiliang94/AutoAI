@@ -1,30 +1,6 @@
-from LLM.helper import *
-
-sub_tasks = ['negation', 'num_to_verbal',
-             'active_to_passive', 'singular_to_plural', 'rhymes',
-             'second_word_letter', 'sentence_similarity', 'sentiment', 'orthography_starts_with',
-             'sum', 'synonyms', 'translation_en-de', 'translation_en-es',
-             'translation_en-fr', 'word_in_context']
-
-# total_trials = 1
-# bounds = torch.stack([torch.ones(2) * 0.01, torch.ones(2) * 1.0])
-# down_sample_size = 0.1
-# BO_iteration = 10
-# to_use_specific_model = False
-# sample_k = 1
-
-# for task in sub_tasks:
-#     print("task: ", task)
-#     loss_space_bo_all_trials = []
-#     for trial in range(1):
-#         accuracy = llm_prompt_task(task, bounds = bounds,
-#                             down_sample_size = down_sample_size, BO_iteration=BO_iteration, to_use_specific_model = to_use_specific_model,
-#                             sample_size=sample_k)
-#         loss_space_bo_all_trials.append(accuracy)
-#     file_name = "result/llm/" + str(task) + ".csv"
-#     np.savetxt(file_name, loss_space_bo_all_trials)
-
-from LLM.helper import *
+from LLM.BO import *
+import os
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 sub_tasks = ['antonyms', 'diff', 'first_word_letter',
              'informal_to_formal', 'larger_animal', 'letters_list', 'taxonomy_animal', 'negation', 'num_to_verbal',
@@ -32,25 +8,58 @@ sub_tasks = ['antonyms', 'diff', 'first_word_letter',
              'second_word_letter', 'sentence_similarity', 'sentiment', 'orthography_starts_with',
              'sum', 'synonyms', 'translation_en-de', 'translation_en-es',
              'translation_en-fr', 'word_in_context']
+import warnings
+warnings.filterwarnings("ignore")
 
-total_trials = 1
-bounds = torch.stack([torch.ones(2) * 0.001, torch.ones(2) * 1.0])
-down_sample_size = 0.01
-BO_iteration = 3
+f = open('params/LLM.json')
+param = json.load(f)
+
+# system related parameters
+down_sample_size = param["down_sample_size"]
 to_use_specific_model = False
-sample_k = 3
-epochs = 2
-model = 'gpt-3.5-turbo'
-model = 'text-davinci-002'
-task = "all_task_predict_at_once_epochs_5_k_3_down_sample_size_0.05_itr_10_model_davinci"
+contamination_rate=param["contamination_rate"]
+epochs = param["epochs"]
 
-units = sample_k * epochs * down_sample_size / 0.25
-print("predicted total time taken (hours): ", str(BO_iteration * units * 2400 / 3600))
-loss_space_bo_all_trials = []
-for trial in range(1):
-    accuracy = llm_prompt_task_modified(task, bounds = bounds,
-                        down_sample_size = down_sample_size, BO_iteration=BO_iteration, to_use_specific_model = to_use_specific_model,
-                        sample_size=sample_k, epochs=epochs, gpt_model=model)
-    loss_space_bo_all_trials.append(accuracy)
-file_name = "result/llm/" + str(task) + ".csv"
-np.savetxt(file_name, loss_space_bo_all_trials)
+# ABOLLO related parameters
+total_trials = param["abollo_trial"] # trials
+abollo_iterations = param["abollo_bo_iteration"] # bo iteration
+samples = param["abollo_sample_size"] # k samples
+bounds = torch.stack([torch.ones(2) * param["abollo_lower_bound"], torch.ones(2) * param["abollo_upper_bound"]])
+
+# vanilla parameters
+vanilla_bo_trials = param["vanilla_bo_trial"]
+vanilla_bo_iterations = param["vanilla_bo_iteration"]
+
+# turbo parameters
+turbo_bo_trials=param["vanilla_bo_trial"]
+turbo_bo_iterations=param["vanilla_bo_trial"]
+
+contamination_rate = 0.5
+# ABOLLO
+for sample_k in samples:
+    for itr in abollo_iterations: 
+        task = "llm_pipeline_k" + str(sample_k) + "_itr_" + str(itr)
+        units = sample_k * epochs * down_sample_size / 0.25
+        print("predicted total time taken (hours): ", str(itr * units * 2400 / 3600))
+        loss_space_bo_all_trials = llm_abollo(sub_tasks, bounds = bounds,
+                            down_sample_size = down_sample_size, BO_iteration=itr, trials=total_trials, to_use_specific_model = to_use_specific_model,
+                            sample_size=sample_k, epochs=epochs, contamination_rate=contamination_rate)
+        results = np.array(loss_space_bo_all_trials)
+        output_dir = "result/llm/" + str(task) + ".csv"
+        np.savetxt(output_dir, results)
+
+# turbo
+# bo_all_trials = llm_turbo(sub_tasks, contamination_rate, to_normalize_y=True, total_trials=vanilla_bo_trials, iterations=turbo_bo_iterations)
+# max_len = max([len(x) for x in bo_all_trials])
+# for x in range(0, len(bo_all_trials)):
+#     while len(bo_all_trials[x]) < max_len:
+#         bo_all_trials[x].append(bo_all_trials[x][-1])
+# output_dir = "result/llm_turbo.csv"
+# results = np.array(bo_all_trials)
+# np.savetxt(output_dir, results)
+
+# # vanilla BO with GP UCB
+# result = run_BO_GP_UCB(vanilla_bo_iterations, vanilla_bo_trials, sub_tasks)
+# output_dir = "result/llm_vanilla_bo.csv"
+# result = np.array(result)
+# np.savetxt(output_dir, result)

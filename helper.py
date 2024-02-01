@@ -6,6 +6,9 @@ from Models.ModelWeightedSum import *
 from Models.ModelExponential import *
 from Models.ModelConstant import *
 from Models.ModelWeightedSumLogit import ModelWeightedSumLogit
+from Models.ModelLogistic import ModelLogistic
+from Models.ModelLinearRegression import ModelLinearRegression
+from Models.ModelWeightedSumThree import ModelWeightedSumThree
 from GraphDecomposition.MutualInformation import mutual_information_nodes_samples
 from mnist.MNISTLoader import *
 from Models.ModelMNIST import *
@@ -458,7 +461,7 @@ def show_system_loss_from_grad_descent(DG, itr=500, y_min=0.0, y_max=1.0, plot=F
         plt.ylim(y_min,y_max)
         plt.ylabel("loss")
         plt.xlabel("GD iterations")
-        plt.title("component and system loss with local gradient descent")
+        #plt.title("component and system loss with local gradient descent")
         plt.show()
     return last_loss, losses
 
@@ -567,39 +570,79 @@ def run_experiments_all(system_param : dict, data_generation_seed : int, vanilla
     np.savetxt(vanilla_bo_all_seeds_dir, seeds)
     run_our_bo(DG, lower_bound_local_loss, seeds,  our_bo_trial, ours_bo_bound_size, our_bo_iterations, our_bo_samples, our_bo_output_dir, our_bo_search_method)
 
-def run_our_bo(DG : DirectedFunctionalGraph, lower_bound_local_loss, seeds,  our_bo_trial : int, ours_bo_bound_size: int, our_bo_iterations : int, our_bo_samples: list, our_bo_output_dir, our_bo_search_method):
+def create_healthcare_system(param, noise=0.5, seed=11):  
+    np.random.seed(seed)
+    dg_nn = DirectedFunctionalGraph(noise)
+    
+    # white box components
+    dg_nn.add_node("model_heart_disease", component=ModelLogistic(21))
+    x,y = get_heart_disease_data()
+    dg_nn.nodes["model_heart_disease"]["component"].attach_local_data(x,y)
+ 
+    dg_nn.add_node("model_liver_hep", component=ModelLogistic(14))
+    x,y = get_hepatitis_data()
+    
+    dg_nn.nodes["model_liver_hep"]["component"].attach_local_data(x,y)
+    
+    dg_nn.add_node("model_kidney", component=ModelLogistic(146))
+    x,y = get_kidney_data()
+    dg_nn.nodes["model_kidney"]["component"].attach_local_data(x,y)
+    
+    dg_nn.add_node("model_body_fat", component=ModelLinearRegression(15))
+    x,y = get_body_fat_data()
+    dg_nn.nodes["model_body_fat"]["component"].attach_local_data(x,y)
+
+    dg_nn.add_node("Blackbox_DoctorA", component=ModelWeightedSum())
+    dg_nn.add_node("Blackbox_DoctorB", component=ModelWeightedSumThree())
+    
+    dg_nn.add_node("model_aggregate", component=ModelWeightedSum())
+    x,y = get_data_tree(dg_nn.nodes["model_aggregate"]["component"], 0, 2, param["model_aggregate"])
+    dg_nn.nodes["model_aggregate"]["component"].attach_local_data(x,y)
+    
+    dg_nn.add_edge(("model_liver_hep", "model_kidney", "model_body_fat"), "Blackbox_DoctorB")
+    dg_nn.add_edge(("model_heart_disease", "model_body_fat"), "Blackbox_DoctorA")
+    dg_nn.add_edge(("Blackbox_DoctorA", "Blackbox_DoctorB"), "model_aggregate")
+
+    x,y = get_end_to_end_nn_data(dg_nn, param, seed=seed)
+
+    dg_nn.system_x = x
+    dg_nn.system_y = y
+    return dg_nn
+
+def run_our_bo(DG : DirectedFunctionalGraph, lower_bound_local_loss, seeds,  our_bo_trial : int, ours_bo_bound_size: int, our_bo_iterations, our_bo_samples: list, our_bo_output_dir, our_bo_search_method):
     samples = our_bo_samples
     seeds = copy.deepcopy(list(seeds))
     for s in samples:
-        seed_for_trial = copy.deepcopy(list(seeds))
-        print("samples: ", s)
-        loss_space_bo_all_trials = []
-        for x in range(200):
-            print("number of attempts: ", x)
-            print("trial of our BO (successful): ", len(loss_space_bo_all_trials))
-            if len(loss_space_bo_all_trials) >= our_bo_trial:
-                break
-            
-            try:
-                torch.manual_seed(int(seed_for_trial[0]))
-                DG.random_initialize_param(int(seed_for_trial[0]))
-                print("system loss: ", DG.get_system_loss())
-                # BO with local loss -> system loss
-                print("bounds: ", np.array(lower_bound_local_loss))
-                bounds = torch.tensor([np.array(lower_bound_local_loss) * 1.1, np.array(lower_bound_local_loss) * ours_bo_bound_size])
-                all_best_losses_ours, best_param = BO_graph_local_loss(DG, bounds, our_bo_search_method, s, printout=True, iteration=our_bo_iterations)
-                loss_space_bo_all_trials.append(all_best_losses_ours)
+        for itr in our_bo_iterations:
+            seed_for_trial = copy.deepcopy(list(seeds))
+            print("samples: ", s)
+            loss_space_bo_all_trials = []
+            for x in range(200):
+                print("number of attempts: ", x)
+                print("trial of our BO (successful): ", len(loss_space_bo_all_trials))
+                if len(loss_space_bo_all_trials) >= our_bo_trial:
+                    break
+                
+                try:
+                    torch.manual_seed(int(seed_for_trial[0]))
+                    DG.random_initialize_param(int(seed_for_trial[0]))
+                    print("system loss: ", DG.get_system_loss())
+                    # BO with local loss -> system loss
+                    print("bounds: ", np.array(lower_bound_local_loss))
+                    bounds = torch.tensor([np.array(lower_bound_local_loss) * 1.1, np.array(lower_bound_local_loss) * ours_bo_bound_size])
+                    all_best_losses_ours, best_param = BO_graph_local_loss(DG, bounds, our_bo_search_method, s, printout=True, iteration=itr, ignore_error=True)
+                    loss_space_bo_all_trials.append(all_best_losses_ours)
 
-            except Exception as e:
-               print(e)
-               print("IN TROUBLE NOW. TERMINATE AND FIND OUT WHY???")
-               continue
+                except Exception as e:
+                    print(e)
+                    print("IN TROUBLE NOW. TERMINATE AND FIND OUT WHY???")
+                    continue
 
 
 
-        loss_space_bo_all_trials = np.array(loss_space_bo_all_trials)
-        file_name = our_bo_output_dir + "_" + str(s) + ".csv"
-        np.savetxt(file_name, loss_space_bo_all_trials)
+            loss_space_bo_all_trials = np.array(loss_space_bo_all_trials)
+            file_name = our_bo_output_dir + "_" + str(s) + "_" + str(itr) +".csv"
+            np.savetxt(file_name, loss_space_bo_all_trials)
         
 
 def run_our_bo_same_queries(DG : DirectedFunctionalGraph, lower_bound_local_loss, seeds,  our_bo_trial : int, ours_bo_bound_size: int, our_bo_iterations : list, our_bo_samples: list, our_bo_output_dir, our_bo_search_method):

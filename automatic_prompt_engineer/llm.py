@@ -155,18 +155,30 @@ class GPT_Forward(LLM):
         for i in range(len(prompt)):
             prompt[i] = prompt[i].replace('[APE]', '').strip()
         response = None
+        result = []
         while response is None:
             try:
-                response = openai.Completion.create(
-                    **config, prompt=prompt)
+                
+                client = openai.OpenAI(api_key="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")
+                
+                for p in prompt:
+                    response = client.chat.completions.create(
+                    model="gpt-3.5-turbo-0301",
+                    messages=[
+                        {"role": "user", "content": p},
+                    ]
+                    )
+                    result.append(response.choices[0].message.content)
+                # response = openai.Completion.create(
+                #     **config, prompt=prompt)
             except Exception as e:
                 if 'is greater than the maximum' in str(e):
                     raise BatchSizeException()
                 print(e)
                 print('Retrying...')
                 time.sleep(5)
-
-        return [response['choices'][i]['text'] for i in range(len(response['choices']))]
+        #print([response['choices'][i]['message']["content"] for i in range(len(response['choices']))])
+        return result
 
     def __complete(self, prompt, n):
         """Generates text from the model and returns the log prob data."""
@@ -209,6 +221,7 @@ class GPT_Forward(LLM):
         response = None
         while response is None:
             try:
+                openai.OpenAI().api_key = ""
                 response = openai.Completion.create(
                     **config, prompt=text)
             except Exception as e:
